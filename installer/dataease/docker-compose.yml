@@ -1,0 +1,31 @@
+services:
+
+  dataease:
+    image: registry.cn-qingdao.aliyuncs.com/dataease/dataease:DE_TAG
+    stop_signal: SIGTERM
+    stop_grace_period: 15s
+    container_name: dataease
+    ports:
+      - ${DE_PORT}:8100
+    volumes:
+      - ${DE_BASE}/dataease3.0/conf:/opt/apps/config
+      - ${DE_BASE}/dataease3.0/logs:/opt/dataease3.0/logs
+      - ${DE_BASE}/dataease3.0/data/static-resource:/opt/dataease3.0/data/static-resource
+      - ${DE_BASE}/dataease3.0/cache:/opt/dataease3.0/cache
+      - ${DE_BASE}/dataease3.0/data/geo:/opt/dataease3.0/data/geo
+      - ${DE_BASE}/dataease3.0/data/map:/opt/dataease3.0/data/map
+      - ${DE_BASE}/dataease3.0/data/appearance:/opt/dataease3.0/data/appearance
+      - ${DE_BASE}/dataease3.0/data/exportData:/opt/dataease3.0/data/exportData
+      - ${DE_BASE}/dataease3.0/data/plugin:/opt/dataease3.0/data/plugin
+      - ${DE_BASE}/dataease3.0/data/font:/opt/dataease3.0/data/font
+      - ${DE_BASE}/dataease3.0/data/driver:/opt/dataease3.0/data/driver
+      - ${DE_BASE}/dataease3.0/data/i18n:/opt/dataease3.0/data/i18n
+      - ${DE_BASE}/dataease3.0/data/report:/opt/dataease3.0/data/report
+    depends_on:
+      DE_MYSQL_HOST:
+        condition: service_healthy
+    networks:
+      - dataease-network3
+
+networks:
+  dataease-network3:

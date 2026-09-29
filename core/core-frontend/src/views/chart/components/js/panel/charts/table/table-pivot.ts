@@ -1,0 +1,1494 @@
+import {
+  EXTRA_FIELD,
+  PivotSheet,
+  S2Event,
+  S2Options,
+  TOTAL_VALUE,
+  S2Theme,
+  Totals,
+  PivotDataSet,
+  Query,
+  VALUE_FIELD,
+  QueryDataType,
+  TotalStatus,
+  Aggregation,
+  S2DataConfig,
+  MergedCell,
+  LayoutResult,
+  RowCell
+} from '@antv/s2'
+import { formatterItem, valueFormatter } from '../../../formatter'
+import { hexColorToRGBA, isAlphaColor, parseJson } from '../../../util'
+import { S2ChartView, S2DrawOptions } from '../../types/impl/s2'
+import { TABLE_EDITOR_PROPERTY_INNER } from './common'
+import { useI18n } from '@/hooks/web/useI18n'
+import {
+  isNumber,
+  keys,
+  maxBy,
+  merge,
+  minBy,
+  some,
+  isEmpty,
+  get,
+  defaultsDeep,
+  omit
+} from 'lodash-es'
+import { copyContent, CustomDataCell, getPivotConditions } from '../../common/common_table'
+import Decimal from 'decimal.js'
+import { DEFAULT_TABLE_HEADER } from '@/views/chart/components/editor/util/chart'
+import { Text } from '@antv/g'
+import { getAggregationAndCalcFuncByQuery } from '@antv/s2/esm/utils/data-set-operate'
+import { calcActionByType } from '@antv/s2/esm/utils/number-calculate'
+import { CellData } from '@antv/s2'
+
+type DataItem = Record<string, any>
+
+const { t } = useI18n()
+
+class CustomPivotDataset extends PivotDataSet {
+  getTotalValue(query: Query, totalStatus?: TotalStatus) {
+    const { options } = this.spreadsheet
+    const effectiveStatus = some(totalStatus)
+    const status = effectiveStatus ? totalStatus! : this.getTotalStatus(query)
+    const { aggregation, calcFunc } =
+      getAggregationAndCalcFuncByQuery(status, options?.totals) || {} // 聚合方式从用户配置的 s2Options.totals 取, 在触发前端兜底计算汇总逻辑时, 如果没有汇总的配置, 默认按 [求和] 计算,避免排序失效.
+
+    const defaultAggregation =
+      isEmpty(options?.totals) && !this.spreadsheet.isHierarchyTreeType() ? Aggregation.SUM : ''
+
+    const calcAction = calcActionByType[aggregation! || defaultAggregation] // 前端计算汇总值
+
+    if (calcAction || calcFunc) {
+      const data = this.getCellMultiData({
+        query,
+        queryType: QueryDataType.DetailOnly
+      })
+      let totalValue: number | null = null
+
+      if (calcFunc) {
+        totalValue = calcFunc(query, data, this.spreadsheet, status)
+      } else if (calcAction) {
+        // 全空指标保持为空，不能将缺失数据汇总成真实的 0。
+        const allEmpty = data.every(item =>
+          isEmptyTotalValue(CellData.getFieldValue(item, VALUE_FIELD))
+        )
+        if (!allEmpty || aggregation === Aggregation.COUNT) {
+          totalValue = calcAction(data, VALUE_FIELD)!
+        }
+      }
+
+      return CellData.getCellData(
+        { ...omit(query, [EXTRA_FIELD]), [query[EXTRA_FIELD]]: totalValue },
+        query[EXTRA_FIELD]
+      )
+    }
+  }
+}
+
+class CustomPivotRowCell extends RowCell {
+  protected showTreeIcon(): boolean {
+    // 纯树形模式的末级节点没有可展开内容，不显示无效的展开图标
+    if (this.spreadsheet.isHierarchyTreeType() && this.meta.isLeaf) {
+      return false
+    }
+    return super.showTreeIcon()
+  }
+}
+/**
+ * 透视表
+ */
+export class TablePivot extends S2ChartView<PivotSheet> {
+  properties: EditorProperty[] = [
+    'border-style',
+    'background-overall-component',
+    'basic-style-selector',
+    'table-header-selector',
+    'table-cell-selector',
+    'table-total-selector',
+    'title-selector',
+    'tooltip-selector',
+    'function-cfg',
+    'threshold',
+    'linkage',
+    'jump-set'
+  ]
+  propertyInner = {
+    ...TABLE_EDITOR_PROPERTY_INNER,
+    'table-header-selector': [
+      'tableHeaderBgColor',
+      'tableTitleFontSize',
+      'tableHeaderFontColor',
+      'tableTitleHeight',
+      'tableHeaderAlign',
+      'showColTooltip',
+      'showRowTooltip',
+      'showHorizonBorder',
+      'showVerticalBorder',
+      'rowHeaderFreeze'
+    ],
+    'table-total-selector': ['row', 'col'],
+    'basic-style-selector': [
+      'tableColumnMode',
+      'tableBorderColor',
+      'tableScrollBarColor',
+      'alpha',
+      'tableLayoutMode',
+      'tableRowHeaderMode',
+      'showHoverStyle',
+      'quotaPosition',
+      'quotaColLabel'
+    ]
+  }
+  axis: AxisType[] = ['xAxis', 'xAxisExt', 'yAxis', 'filter']
+  axisConfig: AxisConfig = {
+    xAxis: {
+      name: `${t('chart.table_pivot_row')} / ${t('chart.dimension')}`,
+      type: 'd'
+    },
+    xAxisExt: {
+      name: `${t('chart.drag_block_table_data_column')} / ${t('chart.dimension')}`,
+      type: 'd',
+      allowEmpty: true
+    },
+    yAxis: {
+      name: `${t('chart.drag_block_table_data_column')} / ${t('chart.quota')}`,
+      type: 'q'
+    }
+  }
+
+  public drawChart(drawOption: S2DrawOptions<PivotSheet>): PivotSheet {
+    const { container, chart, chartObj, action } = drawOption
+    const containerDom = document.getElementById(container)
+    if (!containerDom) return
+
+    const { xAxisExt: columnFields, xAxis: rowFields, yAxis: valueFields } = chart
+    const [c, r, v] = [columnFields, rowFields, valueFields].map(arr =>
+      arr.map(i => i.dataeaseName)
+    )
+
+    // fields
+    const { fields, customCalc } = chart.data
+    if (!fields || fields.length === 0) {
+      if (chartObj) {
+        chartObj.destroy()
+      }
+      return
+    }
+
+    const columns = []
+    const meta = []
+
+    const valueFieldMap: Record<string, Axis> = [
+      ...chart.xAxis,
+      ...chart.xAxisExt,
+      ...chart.yAxis
+    ].reduce((p, n) => {
+      p[n.dataeaseName] = n
+      return p
+    }, {})
+    fields.forEach(ele => {
+      const f = valueFieldMap[ele.dataeaseName]
+      columns.push(ele.dataeaseName)
+      meta.push({
+        field: ele.dataeaseName,
+        name: ele.chartShowName ?? ele.name,
+        formatter: value => {
+          if (!f) {
+            return value
+          }
+          if (value === null || value === undefined) {
+            return value
+          }
+          if (![2, 3, 4].includes(f.deType) || !isNumber(value)) {
+            return value
+          }
+          if (f.formatterCfg) {
+            return valueFormatter(value, f.formatterCfg)
+          } else {
+            return valueFormatter(value, formatterItem)
+          }
+        }
+      })
+    })
+
+    // total config
+    const { basicStyle, tooltip, tableTotal, tableHeader } = parseJson(chart.customAttr)
+    if (!tableTotal.row.subTotalsDimensionsNew || tableTotal.row.subTotalsDimensions == undefined) {
+      tableTotal.row.subTotalsDimensions = r
+    }
+    tableTotal.col.subTotalsDimensions = c
+
+    // 解析合计、小计排序
+    const sortParams = []
+    // 原逻辑按指标、列维度、行维度的固定顺序追加，没有读取 sortPriority
+    // S2 中后加入的 sortParam 优先级更高，普通字段规则需按用户优先级反向追加
+    const fieldSortParams: Array<{ fieldId: string; sort: Record<string, any> }> = []
+    const sortPriority = new Map(
+      (chart.sortPriority ?? []).map((field, index) => [field.id, index])
+    )
+    let rowTotalSort = false
+    if (
+      tableTotal.row.totalSort &&
+      tableTotal.row.totalSort !== 'none' &&
+      c.length > 0 &&
+      tableTotal.row.showGrandTotals &&
+      v.indexOf(tableTotal.row.totalSortField) > -1
+    ) {
+      c.forEach(i => {
+        const sort = {
+          sortFieldId: i,
+          sortMethod: tableTotal.row.totalSort.toUpperCase(),
+          sortByMeasure: TOTAL_VALUE,
+          query: {
+            [EXTRA_FIELD]: tableTotal.row.totalSortField
+          }
+        }
+        sortParams.push(sort)
+      })
+      rowTotalSort = true
+    }
+    let colTotalSort = false
+    if (
+      tableTotal.col.totalSort &&
+      tableTotal.col.totalSort !== 'none' &&
+      r.length > 0 &&
+      tableTotal.col.showGrandTotals &&
+      v.indexOf(tableTotal.col.totalSortField) > -1
+    ) {
+      r.forEach(i => {
+        const sort = {
+          sortFieldId: i,
+          sortMethod: tableTotal.col.totalSort.toUpperCase(),
+          sortByMeasure: TOTAL_VALUE,
+          query: {
+            [EXTRA_FIELD]: tableTotal.col.totalSortField
+          }
+        }
+        sortParams.push(sort)
+      })
+      colTotalSort = true
+    }
+    // 沿用原有指标排序边界，仅在无列维度时取第一个已设置排序的指标
+    if (!columnFields?.length) {
+      const sortField = valueFields?.find(v => !['none', 'custom_sort'].includes(v.sort))
+      if (sortField) {
+        const sort = {
+          sortFieldId: r[0],
+          sortMethod: sortField.sort.toUpperCase(),
+          sortByMeasure: TOTAL_VALUE,
+          query: {
+            [EXTRA_FIELD]: sortField.dataeaseName
+          }
+        }
+        fieldSortParams.push({ fieldId: sortField.id, sort })
+      }
+    }
+    // 自定义总计小计
+    const totals = [
+      tableTotal.row.calcTotals,
+      tableTotal.row.calcSubTotals,
+      tableTotal.col.calcTotals,
+      tableTotal.col.calcSubTotals
+    ]
+    const axisMap = {
+      row: chart.xAxis,
+      col: chart.xAxisExt,
+      quota: chart.yAxis
+    }
+    // 沒有列维度需要特殊处理
+    if (!chart.xAxisExt?.length) {
+      //树形模式下，列维度为空，行小计的配置会变成列总计
+      if (basicStyle.tableLayoutMode === 'tree') {
+        tableTotal.col.calcTotals = tableTotal.row.calcSubTotals
+        if (!tableTotal.col.calcTotals.cfg?.length) {
+          tableTotal.col.calcTotals.cfg = chart.yAxis.map(y => {
+            return {
+              dataeaseName: y.dataeaseName,
+              aggregation: 'SUM'
+            }
+          })
+        }
+      } else {
+        // 列总计设置为空
+        tableTotal.col.calcTotals.calcFunc = () => '-'
+      }
+    }
+    totals.forEach(total => {
+      if (total.cfg?.length) {
+        delete total.aggregation
+        const totalCfgMap = total.cfg.reduce((p, n) => {
+          p[n.dataeaseName] = n
+          return p
+        }, {})
+        total.calcFunc = (query, data, _, status) => {
+          return customCalcFunc(query, data, status, chart, totalCfgMap, axisMap, customCalc)
+        }
+      }
+    })
+    // 空值处理
+    const newData = this.configEmptyDataStrategy(chart)
+    // 行列维度排序
+    if (!rowTotalSort) {
+      c?.forEach((f, i) => {
+        if (valueFieldMap[f]?.sort === 'none') {
+          return
+        }
+        const sort = {
+          sortFieldId: f
+        }
+        const sortMethod = valueFieldMap[f]?.sort?.toUpperCase()
+        if (sortMethod === 'CUSTOM_SORT') {
+          sort.sortBy = valueFieldMap[f].customSort
+        } else {
+          if (i === 0) {
+            sort.sortMethod = sortMethod
+          } else {
+            const fieldValues = newData.map(item => item[f])
+            const uniqueValues = [...new Set(fieldValues)]
+
+            // 根据配置动态决定排序顺序
+            uniqueValues.sort((a, b) => {
+              if ([2, 3, 4].includes(valueFieldMap[f]?.deType)) {
+                return sortMethod === 'ASC' ? a - b : b - a
+              }
+              if (!a && !b) {
+                return 0
+              }
+              if (!a) {
+                return sortMethod === 'ASC' ? -1 : 1
+              }
+              if (!b) {
+                return sortMethod === 'ASC' ? 1 : -1
+              }
+              return sortMethod === 'ASC' ? a.localeCompare(b) : b.localeCompare(a)
+            })
+            sort.sortBy = uniqueValues
+          }
+        }
+        fieldSortParams.push({ fieldId: valueFieldMap[f].id, sort })
+      })
+    }
+    if (!colTotalSort) {
+      r?.forEach((f, i) => {
+        if (valueFieldMap[f]?.sort === 'none') {
+          return
+        }
+        const sort = {
+          sortFieldId: f
+        }
+        const sortMethod = valueFieldMap[f]?.sort?.toUpperCase()
+        if (sortMethod === 'CUSTOM_SORT') {
+          sort.sortBy = valueFieldMap[f].customSort
+        } else {
+          if (i === 0) {
+            sort.sortMethod = sortMethod
+          } else {
+            const fieldValues = newData.map(item => item[f])
+            const uniqueValues = [...new Set(fieldValues)]
+            // 根据配置动态决定排序顺序
+            uniqueValues.sort((a, b) => {
+              if ([2, 3, 4].includes(valueFieldMap[f]?.deType)) {
+                return sortMethod === 'ASC' ? a - b : b - a
+              }
+              if (!a && !b) {
+                return 0
+              }
+              if (!a) {
+                return sortMethod === 'ASC' ? -1 : 1
+              }
+              if (!b) {
+                return sortMethod === 'ASC' ? 1 : -1
+              }
+              return sortMethod === 'ASC' ? a.localeCompare(b) : b.localeCompare(a)
+            })
+            sort.sortBy = uniqueValues
+          }
+        }
+        fieldSortParams.push({ fieldId: valueFieldMap[f].id, sort })
+      })
+    }
+    if (sortPriority.size) {
+      fieldSortParams.sort((a, b) => {
+        const aPriority = sortPriority.get(a.fieldId)
+        const bPriority = sortPriority.get(b.fieldId)
+        if (aPriority === undefined && bPriority === undefined) {
+          return 0
+        }
+        if (aPriority === undefined) {
+          return -1
+        }
+        if (bPriority === undefined) {
+          return 1
+        }
+        return bPriority - aPriority
+      })
+    }
+    sortParams.push(...fieldSortParams.map(({ sort }) => sort))
+    // data config
+    const s2DataConfig: S2DataConfig = {
+      fields: {
+        rows: r,
+        columns: c,
+        values: v,
+        valueInCols: !(basicStyle.quotaPosition === 'row')
+      },
+      meta: meta,
+      data: newData,
+      sortParams: sortParams
+    }
+    const pivotTotals: Totals = {
+      row: {
+        showGrandTotals: tableTotal.row.showGrandTotals,
+        showSubTotals: tableTotal.row.showSubTotals,
+        subTotalsDimensions: tableTotal.row.subTotalsDimensions,
+        reverseGrandTotalsLayout: tableTotal.row.reverseLayout,
+        reverseSubTotalsLayout: tableTotal.row.reverseSubLayout,
+        grandTotalsLabel: tableTotal.row.label,
+        subTotalsLabel: tableTotal.row.subLabel,
+        calcGrandTotals: tableTotal.row.calcTotals,
+        calcSubTotals: tableTotal.row.calcSubTotals
+      },
+      col: {
+        showGrandTotals: tableTotal.col.showGrandTotals,
+        showSubTotals: tableTotal.col.showSubTotals,
+        subTotalsDimensions: tableTotal.col.subTotalsDimensions,
+        reverseGrandTotalsLayout: tableTotal.col.reverseLayout,
+        reverseSubTotalsLayout: tableTotal.col.reverseSubLayout,
+        grandTotalsLabel: tableTotal.col.label,
+        subTotalsLabel: tableTotal.col.subLabel,
+        calcGrandTotals: tableTotal.col.calcTotals,
+        calcSubTotals: tableTotal.col.calcSubTotals
+      }
+    }
+    const s2Options: S2Options = {
+      width: containerDom.offsetWidth,
+      height: containerDom.offsetHeight,
+      totals: pivotTotals,
+      cornerExtraFieldText: basicStyle.quotaColLabel ?? t('dataset.value'),
+      // 传入空值策略处理后的数据，用于解析父级节点所属分组的动态字段值
+      conditions: getPivotConditions(chart, newData),
+      tooltip: {
+        getContainer: () => containerDom
+      },
+      hierarchyType: basicStyle.tableLayoutMode ?? 'grid',
+      dataSet: spreadSheet => new CustomPivotDataset(spreadSheet),
+      interaction: {
+        hoverHighlight: !(basicStyle.showHoverStyle === false),
+        resize: {
+          rowResizeType: 'all',
+          colResizeType: 'all'
+        }
+      },
+      dataCell: meta => {
+        return new CustomDataCell(meta, meta.spreadsheet)
+      },
+      rowCell: (node, spreadsheet, headerConfig) => {
+        return new CustomPivotRowCell(node, spreadsheet, headerConfig)
+      },
+      transformCanvasConfig() {
+        return {
+          supportsCSSTransform: true
+        }
+      },
+      frozen: {
+        rowHeader: !(tableHeader.rowHeaderFreeze === false)
+      }
+    }
+    // options
+    s2Options.style = defaultsDeep(this.configStyle(chart, s2DataConfig), { rowCell: {} })
+    if (basicStyle.tableLayoutMode === 'tree') {
+      const {
+        defaultExpandLevel,
+        tableRowHeaderMode,
+        tableRowHeaderWidth,
+        tableRowHeaderWidthPercent
+      } = basicStyle
+      // 默认展开层级
+      if (isNumber(defaultExpandLevel)) {
+        if (defaultExpandLevel >= chart.xAxis.length) {
+          s2Options.style.rowCell.expandDepth = defaultExpandLevel
+        } else {
+          s2Options.style.rowCell.expandDepth = defaultExpandLevel - 2
+        }
+      }
+      if (defaultExpandLevel === 'all') {
+        s2Options.style.rowCell.expandDepth = chart.xAxis.length
+      }
+      if (!defaultExpandLevel) {
+        s2Options.style.rowCell.collapseAll = true
+      }
+
+      // 行头宽度
+      if (tableRowHeaderMode === 'fixed') {
+        let treeRowWidth = tableRowHeaderWidth ?? 120
+        if (treeRowWidth < 10) {
+          treeRowWidth = 120
+        }
+        s2Options.style.rowCell.treeWidth = treeRowWidth
+      }
+      if (tableRowHeaderMode === 'percent') {
+        let treeRowWidthPercent = tableRowHeaderWidthPercent ?? 20
+        if (treeRowWidthPercent < 1 || treeRowWidthPercent > 80) {
+          treeRowWidthPercent = 20
+        }
+        s2Options.style.rowCell.treeWidth = containerDom.offsetWidth * (treeRowWidthPercent / 100)
+      }
+    }
+    // 列汇总别名
+    if (!(basicStyle.quotaPosition === 'row' && basicStyle.tableLayoutMode === 'tree')) {
+      if (
+        basicStyle.quotaPosition !== 'row' &&
+        chart.xAxisExt?.length &&
+        chart.yAxis?.length > 1 &&
+        tableTotal.col.showGrandTotals &&
+        tableTotal.col.calcTotals?.cfg?.length
+      ) {
+        const colTotalCfgMap = tableTotal.col.calcTotals.cfg.reduce((p, n) => {
+          p[n.dataeaseName] = n
+          return p
+        }, {})
+        s2Options.layoutCoordinate = (_, __, col) => {
+          if (col?.isGrandTotals) {
+            if (colTotalCfgMap[col.value]?.label) {
+              col.value = colTotalCfgMap[col.value].label
+            }
+          }
+        }
+      }
+      if (
+        basicStyle.quotaPosition === 'row' &&
+        chart.xAxisExt?.length &&
+        chart.yAxis?.length > 1 &&
+        tableTotal.row.showGrandTotals &&
+        tableTotal.row.calcTotals?.cfg?.length
+      ) {
+        const rowTotalCfgMap = tableTotal.row.calcTotals.cfg.reduce((p, n) => {
+          p[n.dataeaseName] = n
+          return p
+        }, {})
+        s2Options.layoutCoordinate = (_, row, __) => {
+          if (row?.isGrandTotals) {
+            if (rowTotalCfgMap[row.value]?.label) {
+              row.value = rowTotalCfgMap[row.value].label
+            }
+          }
+        }
+      }
+    }
+    // tooltip
+    this.configTooltip(chart, s2Options)
+    // svg renderer
+    this.configRenderer(s2Options)
+    // 开始渲染
+    const s2 = new PivotSheet(containerDom, s2DataConfig, s2Options as unknown as S2Options)
+    // 自适应铺满
+    if (basicStyle.tableColumnMode === 'adapt') {
+      s2.on(S2Event.LAYOUT_RESIZE_COL_WIDTH, () => {
+        s2.store.set('lastLayoutResult', s2.facet.getLayoutResult())
+      })
+      // 平铺模式行头resize
+      s2.on(S2Event.LAYOUT_RESIZE_ROW_WIDTH, () => {
+        s2.store.set('lastLayoutResult', s2.facet.getLayoutResult())
+      })
+      // 树形模式行头resize
+      s2.on(S2Event.LAYOUT_RESIZE_TREE_WIDTH, () => {
+        s2.store.set('lastLayoutResult', s2.facet.getLayoutResult())
+      })
+      s2.on(S2Event.LAYOUT_AFTER_HEADER_LAYOUT, (ev: LayoutResult) => {
+        const lastLayoutResult = s2.store.get('lastLayoutResult') as LayoutResult
+        if (lastLayoutResult) {
+          // 拖动 col 表头 resize
+          const colWidthByField = s2.options.style?.colCell?.widthByField
+          // 平铺模式拖动 row 表头 resize
+          const rowWidthByField = s2.options.style?.rowCell?.widthByField
+          // 树形模式拖动 row 表头 resize
+          const treeRowWidth =
+            s2.options.style?.rowCell.treeWidth || lastLayoutResult.rowsHierarchy.width
+          const colWidthMap =
+            lastLayoutResult.colLeafNodes.reduce((p, n) => {
+              p[n.id] = colWidthByField?.[n.field] ?? n.width
+              return p
+            }, {}) || {}
+          const totalColWidth = ev.colLeafNodes.reduce((p, n) => {
+            n.width = colWidthMap[n.id] || n.width
+            n.x = p
+            return p + n.width
+          }, 0)
+          ev.colNodes.forEach(n => {
+            if (n.isLeaf) {
+              return
+            }
+            n.width = this.getColWidth(n)
+            n.x = this.getLeftChild(n).x
+          })
+          if (basicStyle.tableLayoutMode === 'tree') {
+            ev.rowNodes.forEach(n => {
+              n.width = treeRowWidth
+            })
+            ev.rowsHierarchy.width = treeRowWidth
+            ev.colsHierarchy.width = totalColWidth
+          } else {
+            const rowWidthMap =
+              lastLayoutResult.rowNodes.reduce((p, n) => {
+                p[n.id] = rowWidthByField?.[n.field] ?? n.width
+                return p
+              }, {}) || {}
+            ev.rowNodes.forEach(n => {
+              n.x = 0
+              n.width = rowWidthMap[n.id] || n.width
+              let tmp = n
+              while (tmp.parent.id !== 'root') {
+                n.x += tmp.parent.width
+                tmp = tmp.parent
+              }
+            })
+            const totalRowWidth = ev.rowsHierarchy.sampleNodesForAllLevels.reduce((p, n) => {
+              return p + n.width
+            }, 0)
+            const maxRowLevel = ev.rowsHierarchy.maxLevel
+            ev.rowNodes.forEach(n => {
+              // 总计和中间层级的小计需要重新计算宽度
+              if (n.isTotalRoot || (n.isSubTotals && n.level < maxRowLevel)) {
+                let width = 0
+                for (let i = n.level; i <= maxRowLevel; i++) {
+                  width += ev.rowsHierarchy.sampleNodesForAllLevels[i].width
+                }
+                n.width = width
+              }
+            })
+            ev.rowsHierarchy.width = totalRowWidth
+            ev.colsHierarchy.width = totalColWidth
+          }
+          s2.store.set('lastLayoutResult', undefined)
+          return
+        }
+        const containerWidth = containerDom.offsetWidth
+        let scale = containerWidth / (ev.colsHierarchy.width + ev.rowsHierarchy.width)
+        let totalRowWidth = Math.round(ev.rowsHierarchy.width * scale)
+        const isCustomTreeRowWidth =
+          basicStyle.tableLayoutMode === 'tree' &&
+          (basicStyle.tableRowHeaderMode === 'fixed' || basicStyle.tableRowHeaderMode === 'percent')
+        if (isCustomTreeRowWidth) {
+          if (basicStyle.tableRowHeaderMode === 'fixed') {
+            totalRowWidth = basicStyle.tableRowHeaderWidth ?? 120
+            if (totalRowWidth < 10) {
+              totalRowWidth = 120
+            }
+          }
+          if (basicStyle.tableRowHeaderMode === 'percent') {
+            let treeRowWidthPercent = basicStyle.tableRowHeaderWidthPercent ?? 20
+            if (treeRowWidthPercent < 1 || treeRowWidthPercent > 80) {
+              treeRowWidthPercent = 20
+            }
+            totalRowWidth = containerWidth * (treeRowWidthPercent / 100)
+          }
+          if (tableHeader.rowHeaderFreeze !== false) {
+            // 表头冻结时给数据列保留至少一半的可视区域
+            const maxRowWidth = containerWidth / 2
+            if (totalRowWidth > maxRowWidth) {
+              totalRowWidth = maxRowWidth
+            }
+          }
+          // 自定义行头宽度不参与列宽自适应缩放，百分比会随容器尺寸重新计算
+          ev.rowsHierarchy.width = totalRowWidth
+          ev.rowNodes.forEach(n => {
+            n.width = totalRowWidth
+          })
+          scale = (containerWidth - totalRowWidth) / ev.colsHierarchy.width
+        }
+        if (scale <= 1) {
+          return
+        }
+        if (!isCustomTreeRowWidth) {
+          ev.rowNodes.forEach(n => {
+            n.width = Math.round(n.width * scale)
+          })
+        }
+        if (basicStyle.tableLayoutMode !== 'tree') {
+          ev.rowNodes.forEach(n => {
+            n.x = 0
+            let tmp = n
+            while (tmp.parent.id !== 'root') {
+              n.x += tmp.parent.width
+              tmp = tmp.parent
+            }
+          })
+        }
+        let totalColWidth = ev.colLeafNodes.reduce((p, n) => {
+          n.width = Math.round(n.width * scale)
+          n.x = p
+          return p + n.width
+        }, 0)
+        ev.colNodes.forEach(n => {
+          if (n.isLeaf) {
+            return
+          }
+          n.width = this.getColWidth(n)
+          n.x = this.getLeftChild(n).x
+        })
+        const totalWidth = totalColWidth + totalRowWidth
+        if (totalWidth > containerWidth) {
+          // 从最后一列减掉
+          const lastNode = ev.colLeafNodes[ev.colLeafNodes.length - 1]
+          lastNode.width = Math.floor(lastNode.width - (totalWidth - containerWidth))
+          totalColWidth = totalColWidth - (totalWidth - containerWidth)
+        }
+        ev.colsHierarchy.width = totalColWidth - 1
+        ev.rowsHierarchy.width = totalRowWidth
+      })
+    }
+    // tooltip
+    const { show } = tooltip
+    if (show) {
+      s2.on(S2Event.COL_CELL_HOVER, event => this.showTooltip(s2, event, meta))
+      s2.on(S2Event.ROW_CELL_HOVER, event => this.showTooltip(s2, event, meta))
+      s2.on(S2Event.DATA_CELL_HOVER, event => this.showTooltip(s2, event, meta))
+    }
+    // empty data tip
+    configEmptyDataStyle(s2, newData, basicStyle)
+    // click
+    s2.on(S2Event.DATA_CELL_CLICK, ev => this.dataCellClickAction(chart, ev, s2, action))
+    s2.on(S2Event.ROW_CELL_CLICK, ev => this.headerCellClickAction(chart, ev, s2, action))
+    s2.on(S2Event.COL_CELL_CLICK, ev => this.headerCellClickAction(chart, ev, s2, action))
+    // right click
+    s2.on(S2Event.GLOBAL_CONTEXT_MENU, event => copyContent(s2, event, meta))
+    // touch
+    this.configTouchEvent(s2, drawOption, meta)
+    // right click
+    s2.once(S2Event.LAYOUT_AFTER_RENDER, () => {
+      s2.getCanvasElement().addEventListener('contextmenu', e => {
+        e.preventDefault()
+      })
+    })
+    // theme
+    const customTheme = this.configTheme(chart)
+    s2.setThemeCfg({ theme: customTheme })
+
+    return s2
+  }
+  private getColWidth(node) {
+    let width = 0
+    if (node.children?.length) {
+      node.children.forEach(child => {
+        width += this.getColWidth(child)
+      })
+    } else {
+      width = node.width
+    }
+    return width
+  }
+  private getLeftChild(node) {
+    if (!node.children?.length) {
+      return node
+    }
+    return this.getLeftChild(node.children[0])
+  }
+  private dataCellClickAction(chart: Chart, ev, s2Instance: PivotSheet, callback) {
+    const cell = s2Instance.getCell(ev.target)
+    const meta = cell.getMeta()
+    const nameIdMap = chart.data.fields.reduce((pre, next) => {
+      pre[next['dataeaseName']] = next['id']
+      return pre
+    }, {})
+    const rowData = { ...meta.rowQuery, ...meta.colQuery }
+    rowData[meta.valueField] = meta.fieldValue
+    const dimensionList = []
+    for (const key in rowData) {
+      if (nameIdMap[key]) {
+        dimensionList.push({ id: nameIdMap[key], value: rowData[key] })
+      }
+    }
+    const param = {
+      x: ev.x,
+      y: ev.y,
+      data: {
+        dimensionList,
+        name: nameIdMap[meta.valueField],
+        sourceType: 'table-pivot',
+        quotaList: []
+      }
+    }
+    callback(param)
+  }
+  private headerCellClickAction(chart: Chart, ev, s2Instance: PivotSheet, callback) {
+    const cell = s2Instance.getCell(ev.target)
+    const meta = cell.getMeta()
+    const rowData = meta.query
+    const nameIdMap = chart.data.fields.reduce((pre, next) => {
+      pre[next['dataeaseName']] = next['id']
+      return pre
+    }, {})
+    const dimensionList = []
+    for (const key in rowData) {
+      if (nameIdMap[key]) {
+        dimensionList.push({ id: nameIdMap[key], value: rowData[key] })
+      }
+    }
+    const param = {
+      x: ev.x,
+      y: ev.y,
+      data: {
+        dimensionList,
+        name: nameIdMap[meta.valueField],
+        sourceType: 'table-pivot',
+        quotaList: []
+      }
+    }
+    callback(param)
+  }
+  protected configTheme(chart: Chart): S2Theme {
+    const theme = super.configTheme(chart)
+    const { basicStyle, tableHeader } = parseJson(chart.customAttr)
+    let tableHeaderBgColor = tableHeader.tableHeaderBgColor
+    if (!isAlphaColor(tableHeaderBgColor)) {
+      tableHeaderBgColor = hexColorToRGBA(tableHeaderBgColor, basicStyle.alpha)
+    }
+    let tableHeaderCornerBgColor =
+      tableHeader.tableHeaderCornerBgColor ?? DEFAULT_TABLE_HEADER.tableHeaderCornerBgColor
+    if (!isAlphaColor(tableHeaderCornerBgColor)) {
+      tableHeaderCornerBgColor = hexColorToRGBA(tableHeaderCornerBgColor, basicStyle.alpha)
+    }
+    let tableHeaderColBgColor =
+      tableHeader.tableHeaderColBgColor ?? DEFAULT_TABLE_HEADER.tableHeaderColBgColor
+    if (!isAlphaColor(tableHeaderColBgColor)) {
+      tableHeaderColBgColor = hexColorToRGBA(tableHeaderColBgColor, basicStyle.alpha)
+    }
+    let tableBorderColor = basicStyle.tableBorderColor
+    if (!isAlphaColor(tableBorderColor)) {
+      tableBorderColor = hexColorToRGBA(tableBorderColor, basicStyle.alpha)
+    }
+    const tableHeaderColFontColor = hexColorToRGBA(
+      tableHeader.tableHeaderColFontColor,
+      basicStyle.alpha
+    )
+    const tableHeaderCornerFontColor = hexColorToRGBA(
+      tableHeader.tableHeaderCornerFontColor,
+      basicStyle.alpha
+    )
+    const colFontStyle = tableHeader.isColItalic ? 'italic' : 'normal'
+    const cornerFontStyle = tableHeader.isCornerItalic ? 'italic' : 'normal'
+    const colFontWeight = tableHeader.isColBolder === false ? 'normal' : 'bold'
+    const cornerFontWeight = tableHeader.isCornerBolder === false ? 'normal' : 'bold'
+    const pivotTheme = {
+      rowCell: {
+        cell: {
+          backgroundColor: tableHeaderColBgColor,
+          horizontalBorderColor: tableBorderColor,
+          verticalBorderColor: tableBorderColor
+        },
+        text: {
+          fill: tableHeaderColFontColor,
+          fontSize: tableHeader.tableTitleColFontSize,
+          textAlign: tableHeader.tableHeaderColAlign,
+          textBaseline: 'top',
+          fontStyle: colFontStyle,
+          fontWeight: colFontWeight
+        },
+        bolderText: {
+          fill: tableHeaderColFontColor,
+          fontSize: tableHeader.tableTitleColFontSize,
+          textAlign: tableHeader.tableHeaderColAlign,
+          fontStyle: colFontStyle,
+          fontWeight: colFontWeight
+        },
+        measureText: {
+          fill: tableHeaderColFontColor,
+          fontSize: tableHeader.tableTitleColFontSize,
+          textAlign: tableHeader.tableHeaderColAlign,
+          fontStyle: colFontStyle,
+          fontWeight: colFontWeight
+        },
+        seriesText: {
+          fill: tableHeaderColFontColor,
+          fontSize: tableHeader.tableTitleColFontSize,
+          textAlign: tableHeader.tableHeaderColAlign,
+          fontStyle: colFontStyle,
+          fontWeight: colFontWeight
+        }
+      },
+      cornerCell: {
+        cell: {
+          backgroundColor: tableHeaderCornerBgColor
+        },
+        text: {
+          fill: tableHeaderCornerFontColor,
+          fontSize: tableHeader.tableTitleCornerFontSize,
+          textAlign: tableHeader.tableHeaderCornerAlign,
+          fontStyle: cornerFontStyle,
+          fontWeight: cornerFontWeight
+        },
+        bolderText: {
+          fill: tableHeaderCornerFontColor,
+          fontSize: tableHeader.tableTitleCornerFontSize,
+          textAlign: tableHeader.tableHeaderCornerAlign,
+          fontStyle: cornerFontStyle,
+          fontWeight: cornerFontWeight
+        },
+        measureText: {
+          fill: tableHeaderCornerFontColor,
+          fontSize: tableHeader.tableTitleCornerFontSize,
+          textAlign: tableHeader.tableHeaderCornerAlign,
+          fontStyle: cornerFontStyle,
+          fontWeight: cornerFontWeight
+        }
+      }
+    }
+    merge(theme, pivotTheme)
+    if (tableHeader.showHorizonBorder === false) {
+      const tmp: S2Theme = {
+        cornerCell: {
+          cell: {
+            horizontalBorderColor: tableHeaderBgColor,
+            horizontalBorderWidth: 0
+          }
+        },
+        rowCell: {
+          cell: {
+            horizontalBorderColor: tableHeaderBgColor,
+            horizontalBorderWidth: 0
+          }
+        }
+      }
+      merge(theme, tmp)
+    }
+    if (tableHeader.showVerticalBorder === false) {
+      const tmp: S2Theme = {
+        cornerCell: {
+          cell: {
+            verticalBorderColor: tableHeaderBgColor,
+            verticalBorderWidth: 0
+          }
+        },
+        rowCell: {
+          cell: {
+            verticalBorderColor: tableHeaderBgColor,
+            verticalBorderWidth: 0
+          }
+        }
+      }
+      merge(theme, tmp)
+    }
+    return theme
+  }
+
+  setupDefaultOptions(chart: ChartObj): ChartObj {
+    const { customAttr } = chart
+    if (customAttr.basicStyle.tableColumnMode === 'field') {
+      customAttr.basicStyle.tableColumnMode = 'custom'
+    }
+    // 透视表不支持字段级表头对齐
+    if (customAttr.tableHeader.tableHeaderAlign === 'custom') {
+      customAttr.tableHeader.tableHeaderAlign = 'left'
+    }
+    if (customAttr.tableCell.tableItemAlign === 'custom') {
+      customAttr.tableCell.tableItemAlign = 'left'
+    }
+    return chart
+  }
+
+  constructor() {
+    super('table-pivot', [])
+  }
+}
+function customCalcFunc(query, data, status, chart, totalCfgMap, axisMap, customCalc) {
+  if (!data?.length || !query[EXTRA_FIELD]) {
+    return '-'
+  }
+  const aggregation = totalCfgMap[query[EXTRA_FIELD]]?.aggregation || 'SUM'
+  if (
+    aggregation !== 'CUSTOM' &&
+    aggregation !== 'NONE' &&
+    data.every(item => isEmptyTotalValue(item.raw[query[EXTRA_FIELD]]))
+  ) {
+    return null
+  }
+  switch (aggregation) {
+    case 'SUM': {
+      return data.reduce((p, n) => {
+        return p + parseFloat(n.raw[query[EXTRA_FIELD]] ?? 0)
+      }, 0)
+    }
+    case 'AVG': {
+      const sum = data.reduce((p, n) => {
+        return p + parseFloat(n.raw[query[EXTRA_FIELD]] ?? 0)
+      }, 0)
+      return sum / data.length
+    }
+    case 'MIN': {
+      const result = minBy(data, n => {
+        return parseFloat(n.raw[query[EXTRA_FIELD]])
+      })
+      return result?.raw[query[EXTRA_FIELD]]
+    }
+    case 'MAX': {
+      const result = maxBy(data, n => {
+        return parseFloat(n.raw[query[EXTRA_FIELD]])
+      })
+      return result?.raw[query[EXTRA_FIELD]]
+    }
+    case 'NONE': {
+      return '-'
+    }
+    case 'CUSTOM': {
+      const val = getCustomCalcResult(query, axisMap, chart, status, customCalc || {})
+      if (val === null) return null
+      if (val === '' || val === undefined) {
+        return '-'
+      }
+      return parseFloat(val)
+    }
+    default: {
+      return data.reduce((p, n) => {
+        return p + parseFloat(n.raw[query[EXTRA_FIELD]] ?? 0)
+      }, 0)
+    }
+  }
+}
+
+const isEmptyTotalValue = (value: unknown) => value === null || value === undefined || value === ''
+
+function getTreeCustomCalcResult(query, axisMap, status: TotalStatus, customCalc) {
+  const quotaField = query[EXTRA_FIELD]
+  const { row, col } = axisMap
+  // 行列交叉总计
+  if (status.isRowGrandTotal && status.isColGrandTotal) {
+    return customCalc.rowColTotal?.data?.[quotaField]
+  }
+  // 列总计
+  if (status.isColGrandTotal && !status.isRowSubTotal) {
+    const { colTotal, rowSubInColTotal } = customCalc
+    const path = getTreePath(query, row)
+    let val
+    if (path.length) {
+      const subLevel = getSubLevel(query, row)
+      if (subLevel + 1 === row.length && colTotal) {
+        path.push(quotaField)
+        val = get(colTotal.data, path)
+      }
+      if (subLevel + 1 < row.length && rowSubInColTotal) {
+        const data = rowSubInColTotal?.[subLevel]?.data
+        path.push(quotaField)
+        val = get(data, path)
+      }
+    }
+    return val
+  }
+  // 列小计
+  if (status.isColSubTotal && !status.isRowGrandTotal && !status.isRowSubTotal) {
+    const { colSubTotal } = customCalc
+    const subColLevel = getSubLevel(query, col)
+    const subRowLevel = getSubLevel(query, row)
+    const rowPath = getTreePath(query, row)
+    const colPath = getTreePath(query, col)
+    const path = [...rowPath, ...colPath]
+    let data = colSubTotal?.[subColLevel]?.data
+    // 列小计里面的行小计
+    if (rowPath.length < row.length) {
+      const { rowSubInColSub } = customCalc
+      data = rowSubInColSub?.[subRowLevel]?.[subColLevel]?.data
+    }
+    let val
+    if (path.length && data) {
+      path.push(quotaField)
+      val = get(data, path)
+    }
+    return val
+  }
+  // 行总计
+  if (status.isRowGrandTotal && !status.isColSubTotal) {
+    const { rowTotal } = customCalc
+    const path = getTreePath(query, col)
+    let val
+    if (rowTotal) {
+      if (path.length) {
+        path.push(quotaField)
+        val = get(rowTotal.data, path)
+      }
+      // 列维度为空，行维度不为空
+      if (!col.length && row.length) {
+        val = get(rowTotal.data, quotaField)
+      }
+    }
+    return val
+  }
+  // 行小计
+  if (status.isRowSubTotal) {
+    // 列维度为空，行小计直接当成列总计
+    if (
+      (!status.isColGrandTotal && !status.isColSubTotal) ||
+      (!col.length && status.isColGrandTotal && status.isRowSubTotal)
+    ) {
+      const { rowSubTotal } = customCalc
+      const rowLevel = getSubLevel(query, row)
+      const colPath = getTreePath(query, col)
+      const rowPath = getTreePath(query, row)
+      const path = [...colPath, ...rowPath]
+      const data = rowSubTotal?.[rowLevel]?.data
+      let val
+      if (path.length && rowSubTotal) {
+        path.push(quotaField)
+        val = get(data, path)
+      }
+      return val
+    }
+  }
+  // 行总计里面的列小计
+  if (status.isRowGrandTotal && status.isColSubTotal) {
+    const { colSubInRowTotal } = customCalc
+    const colLevel = getSubLevel(query, col)
+    const data = colSubInRowTotal?.[colLevel]?.data
+    const colPath = getTreePath(query, col)
+    let val
+    if (colPath.length && colSubInRowTotal) {
+      colPath.push(quotaField)
+      val = get(data, colPath)
+    }
+    return val
+  }
+  // 列总计里面的行小计
+  if (status.isColGrandTotal && status.isRowSubTotal) {
+    const { rowSubInColTotal } = customCalc
+    const rowSubLevel = getSubLevel(query, row)
+    const data = rowSubInColTotal?.[rowSubLevel]?.data
+    const path = getTreePath(query, row)
+    let val
+    if (path.length && rowSubInColTotal) {
+      path.push(quotaField)
+      val = get(data, path)
+    }
+    return val
+  }
+  return '-'
+}
+
+function getGridCustomCalcResult(query, axisMap, status: TotalStatus, customCalc) {
+  const quotaField = query[EXTRA_FIELD]
+  const { row, col } = axisMap
+  // 行列交叉总计
+  if (status.isRowGrandTotal && status.isColGrandTotal) {
+    return customCalc.rowColTotal?.data?.[quotaField]
+  }
+  // 列总计
+  if (status.isColGrandTotal && !status.isRowSubTotal) {
+    const { colTotal } = customCalc
+    const path = getTreePath(query, row)
+    let val
+    if (path.length) {
+      if (colTotal) {
+        path.push(quotaField)
+        val = get(colTotal.data, path)
+      }
+    }
+    return val
+  }
+  // 列小计
+  if (status.isColSubTotal && !status.isRowGrandTotal && !status.isRowSubTotal) {
+    const { colSubTotal } = customCalc
+    const subLevel = getSubLevel(query, col)
+    const rowPath = getTreePath(query, row)
+    const colPath = getTreePath(query, col)
+    const path = [...rowPath, ...colPath]
+    const data = colSubTotal?.[subLevel]?.data
+    let val
+    if (path.length && data) {
+      path.push(quotaField)
+      val = get(data, path)
+    }
+    return val
+  }
+  // 行总计
+  if (status.isRowGrandTotal && !status.isColSubTotal) {
+    const { rowTotal } = customCalc
+    const path = getTreePath(query, col)
+    let val
+    if (rowTotal) {
+      if (path.length) {
+        path.push(quotaField)
+        val = get(rowTotal.data, path)
+      }
+      // 列维度为空，行维度不为空
+      if (!col.length && row.length) {
+        val = get(rowTotal.data, quotaField)
+      }
+    }
+    return val
+  }
+  // 行小计
+  if (status.isRowSubTotal && !status.isColGrandTotal && !status.isColSubTotal) {
+    const { rowSubTotal } = customCalc
+    const rowLevel = getSubLevel(query, row)
+    const colPath = getTreePath(query, col)
+    const rowPath = getTreePath(query, row)
+    const path = [...colPath, ...rowPath]
+    const data = rowSubTotal?.[rowLevel]?.data
+    let val
+    if (path.length && rowSubTotal) {
+      path.push(quotaField)
+      val = get(data, path)
+    }
+    return val
+  }
+  // 行总计里面的列小计
+  if (status.isRowGrandTotal && status.isColSubTotal) {
+    const { colSubInRowTotal } = customCalc
+    const colLevel = getSubLevel(query, col)
+    const data = colSubInRowTotal?.[colLevel]?.data
+    const colPath = getTreePath(query, col)
+    let val
+    if (colPath.length && colSubInRowTotal) {
+      colPath.push(quotaField)
+      val = get(data, colPath)
+    }
+    return val
+  }
+  // 列总计里面的行小计
+  if (status.isColGrandTotal && status.isRowSubTotal) {
+    const { rowSubInColTotal } = customCalc
+    const rowSubLevel = getSubLevel(query, row)
+    const data = rowSubInColTotal?.[rowSubLevel]?.data
+    const path = getTreePath(query, row)
+    let val
+    if (path.length && rowSubInColTotal) {
+      path.push(quotaField)
+      val = get(data, path)
+    }
+    return val
+  }
+  // 列小计里面的行小计
+  if (status.isColSubTotal && status.isRowSubTotal) {
+    const { rowSubInColSub } = customCalc
+    const rowSubLevel = getSubLevel(query, row)
+    const colSubLevel = getSubLevel(query, col)
+    const data = rowSubInColSub?.[rowSubLevel]?.[colSubLevel]?.data
+    const rowPath = getTreePath(query, row)
+    const colPath = getTreePath(query, col)
+    const path = [...rowPath, ...colPath]
+    let val
+    if (path.length && rowSubInColSub) {
+      path.push(quotaField)
+      val = get(data, path)
+    }
+    return val
+  }
+}
+function getCustomCalcResult(query, axisMap, chart: ChartObj, status: TotalStatus, customCalc) {
+  const { tableLayoutMode } = chart.customAttr.basicStyle
+  if (tableLayoutMode === 'tree') {
+    return getTreeCustomCalcResult(query, axisMap, status, customCalc)
+  }
+  return getGridCustomCalcResult(query, axisMap, status, customCalc)
+}
+
+function getSubLevel(query, axis) {
+  const fields: [] = axis.map(a => a.dataeaseName)
+  let subLevel = -1
+  const queryFields = keys(query)
+  for (let i = fields.length - 1; i >= 0; i--) {
+    const field = fields[i]
+    const index = queryFields.findIndex(f => f === field)
+    if (index !== -1) {
+      subLevel++
+    }
+  }
+  return subLevel
+}
+
+function getTreePath(query, axis) {
+  const path = []
+  const fields = keys(query)
+  axis.forEach(a => {
+    const index = fields.findIndex(f => f === a.dataeaseName)
+    if (index !== -1) {
+      path.push(query[a.dataeaseName])
+    }
+  })
+  return path
+}
+
+export const isNotNumber = (value: unknown) => {
+  if (typeof value === 'number') {
+    return Number.isNaN(value)
+  }
+  if (!value) {
+    return true
+  }
+  if (typeof value === 'string') {
+    return Number.isNaN(Number(value))
+  }
+  return true
+}
+
+const processFieldValues = (data: DataItem[], field: string, filterIllegalValue = false) => {
+  if (!data?.length) {
+    return []
+  }
+
+  return data.reduce<Array<Decimal>>((resultArr, item) => {
+    const fieldValue = get(item, field)
+    const notNumber = isNotNumber(fieldValue)
+
+    if (filterIllegalValue && notNumber) {
+      // 过滤非法值
+      return resultArr
+    }
+
+    const val = notNumber ? 0 : fieldValue
+    resultArr.push(new Decimal(val))
+
+    return resultArr
+  }, [])
+}
+
+export const getDataSumByField = (data: DataItem[], field: string): number => {
+  const fieldValues = processFieldValues(data, field)
+  if (!fieldValues.length) {
+    return 0
+  }
+
+  return Decimal.sum(...fieldValues).toNumber()
+}
+
+export const getDataExtremumByField = (
+  method: 'min' | 'max',
+  data: DataItem[],
+  field: string
+): number => {
+  // 防止预处理时默认值 0 影响极值结果，处理时需过滤非法值
+  const fieldValues = processFieldValues(data, field, true)
+  if (!fieldValues?.length) {
+    return
+  }
+
+  return Decimal[method](...fieldValues).toNumber()
+}
+
+export const getDataAvgByField = (data: DataItem[], field: string): number => {
+  const fieldValues = processFieldValues(data, field)
+  if (!fieldValues?.length) {
+    return 0
+  }
+
+  return Decimal.sum(...fieldValues)
+    .dividedBy(fieldValues.length)
+    .toNumber()
+}
+
+class EmptyDataCell extends MergedCell {
+  drawTextShape(): void {
+    this.meta.fieldValue = ' '
+    super.drawTextShape()
+    const { rowHeader, columnHeader } = this.spreadsheet.facet
+    const offsetX = columnHeader.headerConfig.viewportWidth / 2
+    const offsetY = rowHeader.headerConfig.viewportHeight / 2
+    const style = this.getTextStyle()
+    const meta = this.meta as any
+    this.appendChild(
+      new Text({
+        style: {
+          ...style,
+          fill: meta?.fontColor ?? style.fill,
+          x: offsetX,
+          y: offsetY,
+          text: t('data_set.no_data'),
+          opacity: meta?.opacity ?? 1,
+          textAlign: 'center',
+          textBaseline: 'middle'
+        }
+      })
+    )
+  }
+
+  protected drawBackgroundShape(): void {
+    const cellTheme = this.theme.dataCell.cell
+    cellTheme.backgroundColor = setColorOpacity(cellTheme.backgroundColor, 1)
+    super.drawBackgroundShape()
+  }
+}
+
+export function splitColorAndOpacity(color: string): { color: string; opacity: number } {
+  if (!color) {
+    return { color, opacity: 1 }
+  }
+  const rgbaMatch = color.match(/^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/i)
+  if (rgbaMatch) {
+    return {
+      color: `rgb(${rgbaMatch[1]}, ${rgbaMatch[2]}, ${rgbaMatch[3]})`,
+      opacity: Number(rgbaMatch[4])
+    }
+  }
+  if (/^#[0-9a-fA-F]{8}$/.test(color)) {
+    const alphaHex = color.slice(7, 9)
+    const opacity = Math.round((parseInt(alphaHex, 16) / 255) * 100) / 100
+    return {
+      color: color.slice(0, 7),
+      opacity
+    }
+  }
+  if (/^#[0-9a-fA-F]{4}$/.test(color)) {
+    const r = color[1]
+    const g = color[2]
+    const b = color[3]
+    const a = color[4]
+    const opacity = Math.round((parseInt(a + a, 16) / 255) * 100) / 100
+    return {
+      color: `#${r}${r}${g}${g}${b}${b}`,
+      opacity
+    }
+  }
+  return {
+    color,
+    opacity: 1
+  }
+}
+
+export function setColorOpacity(color: string, opacity: number) {
+  if (color.indexOf('rgba') !== -1) {
+    const colorArr = color.split(',')
+    colorArr[3] = `${opacity})`
+    return colorArr.join(',')
+  }
+  if (color.indexOf('rgb') !== -1) {
+    return `${color.replace('rgb', 'rgba').replace(')', `,${opacity})`)}`
+  }
+  if (color.indexOf('#') !== -1) {
+    if (color.length === 7) {
+      return `${color}${Math.round(opacity * 255).toString(16)}`
+    }
+    if (color.length === 9) {
+      return color.slice(0, 7) + Math.round(opacity * 255).toString(16)
+    }
+  }
+  return color
+}
+
+function configEmptyDataStyle(
+  instance: PivotSheet,
+  data: any[],
+  basicStyle: DeepPartial<ChartBasicStyle>
+) {
+  if (data?.length) {
+    return
+  }
+  instance.on(S2Event.LAYOUT_AFTER_RENDER, () => {
+    const { colLeafNodes, rowLeafNodes } = instance.facet?.getLayoutResult() || {}
+    if (!colLeafNodes?.length || !rowLeafNodes?.length) {
+      return
+    }
+    const mergedCells = []
+    colLeafNodes.forEach((_, colIndex) => {
+      rowLeafNodes.forEach((__, rowIndex) => {
+        mergedCells.push({ rowIndex, colIndex })
+      })
+    })
+    instance.options.mergedCell = (s, c, m = {} as any) => {
+      if (basicStyle.tableEmptyFontColor) {
+        const { color, opacity } = splitColorAndOpacity(basicStyle.tableEmptyFontColor)
+        m.fontColor = color
+        m.opacity = opacity
+      }
+      return new EmptyDataCell(s, c, m)
+    }
+    instance.interaction.mergeCells(mergedCells)
+  })
+}

@@ -1,0 +1,23 @@
+# Overlay for an isolated local source run. Do not use in production.
+# All credentials and the writable bootstrap path come from process environment.
+spring:
+  datasource:
+    driver-class-name: org.mariadb.jdbc.Driver
+    url: jdbc:mariadb://127.0.0.1:${DE_DEV_MYSQL_PORT:3306}/dataease_phase0?useUnicode=true&characterEncoding=UTF-8&useSSL=false
+    username: dataease_dev
+    password: ${DE_DEV_MYSQL_PASSWORD}
+  cache:
+    type: redis
+  data:
+    redis:
+      host: 127.0.0.1
+      port: ${DE_DEV_REDIS_PORT:6379}
+      password: ${DE_DEV_REDIS_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+dataease:
+  path:
+    substitule: ${DE_DEV_SUBSTITULE_PATH}
+  default-pwd: ${DE_DEV_ADMIN_PASSWORD}

@@ -1,0 +1,24 @@
+FROM registry.cn-qingdao.aliyuncs.com/dataease/alpine-openjdk21-jre
+STOPSIGNAL SIGTERM
+RUN mkdir -p /opt/dataease3.0/drivers/ \
+    /opt/dataease3.0/data/map-origin/ \
+    /opt/dataease3.0/data/static-resource/
+    
+ADD drivers/* /opt/dataease3.0/drivers/
+ADD staticResource/ /opt/dataease3.0/data/static-resource/
+COPY mapFiles /opt/dataease3.0/data/map-origin
+
+COPY LICENSE /opt/apps/LICENSE
+COPY THIRD-PARTY-NOTICES /opt/apps/THIRD-PARTY-NOTICES
+
+WORKDIR /opt/apps
+
+ADD core/core-backend/target/CoreApplication.jar /opt/apps/app.jar
+
+ENV JAVA_APP_JAR=/opt/apps/app.jar
+ENV RUNNING_PORT=8100
+ENV JAVA_OPTIONS="-Dfile.encoding=utf-8 -Dloader.path=/opt/apps,/opt/dataease3.0/data/driver/ -Dspring.config.additional-location=/opt/apps/config/"
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=20 --start-period=30s CMD nc -zv 127.0.0.1 $RUNNING_PORT
+
+CMD ["/deployments/run-java.sh"]

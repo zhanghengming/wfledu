@@ -1,0 +1,40 @@
+name: dataease-phase0-dev
+
+services:
+  mysql:
+    image: mysql:8.4.5
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DE_DEV_MYSQL_ROOT_PASSWORD:?set a local root password}
+      MYSQL_DATABASE: dataease_phase0
+      MYSQL_USER: dataease_dev
+      MYSQL_PASSWORD: ${DE_DEV_MYSQL_PASSWORD:?set a local application password}
+    ports:
+      - 127.0.0.1:${DE_DEV_MYSQL_PORT:-3306}:3306
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${DE_DEV_REDIS_PASSWORD:?set a local Redis password}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    ports:
+      - 127.0.0.1:${DE_DEV_REDIS_PORT:-6379}:6379
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:

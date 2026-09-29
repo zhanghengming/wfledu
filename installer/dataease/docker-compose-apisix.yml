@@ -1,0 +1,31 @@
+services:
+  apisix:
+    image: registry.cn-qingdao.aliyuncs.com/dataease/apisix:3.17.0-debian
+    container_name: apisix
+    environment:
+      - TZ=Asia/Shanghai
+    restart: always
+    volumes:
+      - ${DE_BASE}/dataease3.0/apisix/apisix_conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ${DE_BASE}/dataease3.0/apisix/logs:/usr/local/apisix/logs
+      - ${DE_BASE}/dataease3.0/apisix/plugins/cas-auth.lua:/usr/local/apisix/apisix/plugins/cas-auth.lua
+      - ${DE_BASE}/dataease3.0/apisix/plugins/hmac-auth.lua:/usr/local/apisix/apisix/plugins/hmac-auth.lua
+    depends_on:
+      - etcd
+    ports:
+      - ${DE_APISIX_PORT}:9080
+    networks:
+      dataease-network3:
+
+  etcd:
+    image: registry.cn-qingdao.aliyuncs.com/dataease/etcd:3.5.10
+    container_name: apisix-etcd
+    restart: always
+    volumes:
+      - ${DE_BASE}/dataease3.0/data/etcd_data:/bitnami/etcd
+    environment:
+      ETCD_ENABLE_V2: "true"
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://apisix-etcd:2379"
+    networks:
+      dataease-network3:

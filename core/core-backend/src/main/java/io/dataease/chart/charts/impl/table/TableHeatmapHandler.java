@@ -1,0 +1,118 @@
+package io.dataease.chart.charts.impl.table;
+
+import io.dataease.api.dataset.union.DatasetGroupInfoDTO;
+import io.dataease.chart.charts.impl.DefaultChartHandler;
+import io.dataease.chart.utils.ChartDataBuild;
+import io.dataease.engine.sql.SQLProvider;
+import io.dataease.engine.trans.Dimension2SQLObj;
+import io.dataease.engine.trans.Quota2SQLObj;
+import io.dataease.engine.utils.Utils;
+import io.dataease.extensions.datasource.dto.DatasourceRequest;
+import io.dataease.extensions.datasource.dto.DatasourceSchemaDTO;
+import io.dataease.extensions.datasource.model.SQLMeta;
+import io.dataease.extensions.datasource.provider.Provider;
+import io.dataease.extensions.view.dto.*;
+import io.dataease.extensions.view.util.ChartDataUtil;
+import io.dataease.extensions.view.util.FieldUtil;
+import io.dataease.utils.LogUtil;
+import lombok.Getter;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+@Component
+public class TableHeatmapHandler extends DefaultChartHandler {
+
+    @Getter
+    private String type = "t-heatmap";
+
+    @Override
+    public AxisFormatResult formatAxis(ChartViewDTO view) {
+        var result =  super.formatAxis(view);
+        var xAxis = new ArrayList<ChartViewFieldDTO>(view.getXAxis());
+        xAxis.addAll(view.getXAxisExt());
+        var yAxis = new ArrayList<ChartViewFieldDTO>(view.getYAxis());
+        yAxis.addAll(view.getExtColor());
+        result.getAxisMap().put(ChartAxis.xAxis, xAxis);
+        result.getAxisMap().put(ChartAxis.yAxis, yAxis);
+        return result;
+    }
+
+    public Map<String, Object> buildResult(ChartViewDTO view, AxisFormatResult formatResult, CustomFilterResult filterResult, List<String[]> data) {
+        var xAxis = formatResult.getAxisMap().get(ChartAxis.xAxis);
+        Map<String, Object> result = ChartDataBuild.transChartData( xAxis, new ArrayList<>(), view, data, false);
+        return result;
+    }
+
+    @Override
+    public <T extends ChartCalcDataResult> T calcChartResult(ChartViewDTO view, AxisFormatResult formatResult, CustomFilterResult filterResult, Map<String, Object> sqlMap, SQLMeta sqlMeta, Provider provider) {
+        var dsMap = (Map<Long, DatasourceSchemaDTO>) sqlMap.get("dsMap");
+        List<String> dsList = new ArrayList<>();
+        for (Map.Entry<Long, DatasourceSchemaDTO> next : dsMap.entrySet()) {
+            dsList.add(next.getValue().getType());
+        }
+        boolean needOrder = Utils.isNeedOrder(dsList);
+        boolean crossDs = Utils.isCrossDs(dsMap);
+        DatasourceRequest datasourceRequest = new DatasourceRequest();
+        fillDatasourceRequest(datasourceRequest, ((DatasetGroupInfoDTO) formatResult.getContext().get("dataset")).getIsCross(), dsMap, sqlMap);
+        var xAxis = formatResult.getAxisMap().get(ChartAxis.xAxis);
+        var yAxis = formatResult.getAxisMap().get(ChartAxis.yAxis);
+        var allFields = (List<ChartViewFieldDTO>) filterResult.getContext().get("allFields");
+        Dimension2SQLObj.dimension2sqlObj(sqlMeta, xAxis, FieldUtil.transFields(allFields), crossDs, dsMap, Utils.getParams(FieldUtil.transFields(allFields)),  view.getCalParams(), pluginManage);
+        Quota2SQLObj.quota2sqlObj(sqlMeta, yAxis, FieldUtil.transFields(allFields), crossDs, dsMap, Utils.getParams(FieldUtil.transFields(allFields)),  view.getCalParams(), pluginManage);
+        String querySql = SQLProvider.createQuerySQL(sqlMeta, true, needOrder, view);
+        querySql = provider.rebuildSQL(querySql, sqlMeta, crossDs, dsMap);
+        datasourceRequest.setQuery(querySql);
+        logger.debug("calcite chart sql: " + querySql);
+        List<String[]> data = (List<String[]>) provider.fetchResultField(datasourceRequest).get("data");
+        //自定义排序
+        data = ChartDataUtil.resultCustomSort(xAxis, yAxis, view.getSortPriority(), data);
+        //数据重组逻辑可重载
+        var result = this.buildResult(view, formatResult, filterResult, data);
+        T calcResult = (T) new ChartCalcDataResult();
+        calcResult.setData(result);
+        calcResult.setContext(filterResult.getContext());
+        calcResult.setQuerySql(querySql);
+        calcResult.setOriginData(data);
+        try {
+            // 与 V2 一致，条件样式的动态阈值可引用颜色指标及横纵轴维度。
+            var dynamicAssistFields = getDynamicThresholdFields(view);
+            var assistFields = getAssistFields(dynamicAssistFields, yAxis, xAxis);
+            if (CollectionUtils.isNotEmpty(assistFields)) {
+                var req = new DatasourceRequest();
+                fillDatasourceRequest(req, crossDs, dsMap, sqlMap);
+
+                List<ChartSeniorAssistDTO> assists = dynamicAssistFields.stream().filter(ele -> !StringUtils.equalsIgnoreCase(ele.getSummary(), "last_item")).toList();
+                if (ObjectUtils.isNotEmpty(assists)) {
+                    var assistSql = assistSQL(querySql, assistFields, dsMap, crossDs);
+                    var tmpSql = provider.rebuildSQL(assistSql, sqlMeta, crossDs, dsMap);
+                    req.setQuery(tmpSql);
+                    logger.debug("calcite assistSql sql: " + tmpSql);
+                    var assistData = (List<String[]>) provider.fetchResultField(req).get("data");
+                    calcResult.setAssistData(assistData);
+                    calcResult.setDynamicAssistFields(assists);
+                }
+
+                List<ChartSeniorAssistDTO> assistsOriginList = dynamicAssistFields.stream().filter(ele -> StringUtils.equalsIgnoreCase(ele.getSummary(), "last_item")).toList();
+                if (ObjectUtils.isNotEmpty(assistsOriginList)) {
+                    var assistSqlOriginList = assistSQLOriginList(querySql, assistFields, dsMap, crossDs);
+                    var tmpSql = provider.rebuildSQL(assistSqlOriginList, sqlMeta, crossDs, dsMap);
+                    req.setQuery(tmpSql);
+                    logger.debug("calcite assistSql sql origin list: " + tmpSql);
+                    var assistDataOriginList = (List<String[]>) provider.fetchResultField(req).get("data");
+                    calcResult.setAssistDataOriginList(assistDataOriginList);
+                    calcResult.setDynamicAssistFieldsOriginList(assistsOriginList);
+                }
+            }
+        } catch (Exception e) {
+            LogUtil.error(e);
+        }
+        return calcResult;
+    }
+
+}

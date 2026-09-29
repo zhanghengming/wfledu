@@ -1,0 +1,39 @@
+server:
+  tomcat:
+    connection-timeout: 70000
+  servlet:
+    context-path: ${DE_CONTEXT_PATH}
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json,application/xml
+    min-response-size: 1024
+spring:
+  profiles:
+    include: ${DE_SPRING_PROFILE}
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 500MB
+  flyway:
+      enabled: false
+  datasource:
+    hikari:
+      maximum-pool-size: 20
+dataease:
+  apisix-api:
+    domain: http://apisix:9180
+    key: DE_APISIX_KEY
+  export:
+    views:
+      limit: ${DE_EXPORT_VIEWS_LIMIT}
+    dataset:
+      limit: ${DE_EXPORT_DATASET_LIMIT}
+  origin-list: ${DE_ORIGIN_LIST}
+  login_timeout: ${DE_LOGIN_TIMEOUT}
+  dataease-servers: ${DE_SERVERS}
+  playwright-server: ${DE_PLAYWRIGHT_SERVER}
+task:
+  executor:
+    address: http://sync-task-actuator:9001
+    log:
+      path: /opt/dataease3.0/logs/sync-task/task-handler-log

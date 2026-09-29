@@ -1,0 +1,95 @@
+package io.dataease.menu.manage;
+
+import io.dataease.api.menu.vo.MenuMeta;
+import io.dataease.api.menu.vo.MenuVO;
+import io.dataease.i18n.Translator;
+import io.dataease.license.config.XpackInteract;
+import io.dataease.menu.bo.MenuTreeNode;
+import io.dataease.menu.dao.auto.entity.CoreMenu;
+import io.dataease.menu.dao.auto.mapper.CoreMenuRepository;
+import io.dataease.utils.BeanUtils;
+import jakarta.annotation.Resource;
+import jakarta.persistence.criteria.Predicate;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@Component
+public class MenuManage {
+
+    private static final String I18N_PREFIX = "i18n_menu.";
+
+    private final static int ROOTID = 0;
+
+    @Resource
+    private CoreMenuRepository coreMenuRepository;
+
+
+    @XpackInteract(value = "menuApi")
+    public List<MenuVO> query(List<CoreMenu> coreMenus) {
+        List<MenuTreeNode> menuTreeNodes = new ArrayList<>(coreMenus.stream().map(menu -> BeanUtils.copyBean(new MenuTreeNode(), menu)).toList());
+        menuTreeNodes.sort(Comparator.comparing(MenuTreeNode::getMenuSort));
+        List<MenuTreeNode> treeNodes = buildPOTree(menuTreeNodes);
+        return convertTree(treeNodes);
+    }
+
+    public List<CoreMenu> coreMenus() {
+        Specification<CoreMenu> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            query.orderBy(cb.asc(root.get("menuSort")));
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+        return coreMenuRepository.findAll(spec);
+    }
+
+
+    private List<MenuTreeNode> buildPOTree(List<MenuTreeNode> coreMenus) {
+        List<MenuTreeNode> result = new ArrayList<>();
+        Map<Long, List<MenuTreeNode>> childMap = coreMenus.stream().collect(Collectors.groupingBy(CoreMenu::getPid));
+        coreMenus.forEach(po -> {
+            po.setChildren(childMap.get(po.getId()));
+            if (po.getPid() == ROOTID) {
+                result.add(po);
+            }
+        });
+        return result;
+    }
+
+    private List<MenuVO> convertTree(List<MenuTreeNode> roots) {
+        List<MenuVO> result = new ArrayList<>();
+        for (MenuTreeNode menuTreeNode : roots) {
+            MenuVO vo = convert(menuTreeNode);
+            List<MenuTreeNode> children = null;
+            if (CollectionUtils.isNotEmpty(children = menuTreeNode.getChildren())) {
+                vo.setChildren(convertTree(children));
+            }
+            if (CollectionUtils.isNotEmpty(vo.getChildren()) || menuTreeNode.getType() != 1) {
+                result.add(vo);
+            }
+        }
+        return result;
+    }
+
+    private MenuVO convert(CoreMenu coreMenu) {
+
+        if (ROOTID != coreMenu.getPid() && StringUtils.startsWith(coreMenu.getPath(), "/")) {
+            coreMenu.setPath(coreMenu.getPath().substring(1));
+        }
+        MenuVO menuVO = new MenuVO();
+        BeanUtils.copyBean(menuVO, coreMenu, "children");
+        MenuMeta meta = new MenuMeta();
+        meta.setTitle(Translator.get(I18N_PREFIX + coreMenu.getName()));
+        meta.setIcon(coreMenu.getIcon());
+        menuVO.setMeta(meta);
+
+        menuVO.setPlugin(coreMenu.isPlugin());
+        return menuVO;
+    }
+}

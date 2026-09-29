@@ -1,0 +1,8 @@
+{
+  "product": "DataEase",
+  "release": "v3.1.0",
+  "commit": "5ce2c3e5d2c99c5d2e8ab8aed2b0fa622f4da594",
+  "officialRepository": "https://github.com/dataease/dataease.git",
+  "readFallbackRepository": "https://gitee.com/fit2cloud-feizhiyun/DataEase.git",
+  "sourceBoundary": "community-only"
+}

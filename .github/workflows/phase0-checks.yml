@@ -1,0 +1,55 @@
+name: Phase 0 checks
+
+on:
+  push:
+    paths:
+      - PHASE0.md
+      - AGENTS.md
+      - project-docs/**
+      - deploy/dev/**
+      - tools/phase0-check.mjs
+      - .github/workflows/phase0-checks.yml
+  pull_request:
+    paths:
+      - PHASE0.md
+      - AGENTS.md
+      - project-docs/**
+      - deploy/dev/**
+      - tools/phase0-check.mjs
+      - .github/workflows/phase0-checks.yml
+  workflow_dispatch:
+    inputs:
+      run_build:
+        description: Attempt full community source build
+        type: boolean
+        default: false
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 23.11.0
+      - run: node tools/phase0-check.mjs
+
+  community-build:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: mvn -version
+      - run: mvn -B -ntp install -DskipTests
+      - run: mvn -B -ntp -f core/pom.xml package -Pstandalone -DskipTests

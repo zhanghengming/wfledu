@@ -1,0 +1,127 @@
+<template>
+  <el-dialog
+    ref="previewPopDialog"
+    modal-class="preview_pop_custom"
+    :append-to-body="true"
+    :fullscreen="state.fullscreen"
+    v-model="state.dialogShow"
+    :style="dialogStyle"
+    :modal="false"
+    :width="state.width"
+  >
+    <div v-if="state.url" class="preview-main-frame-outer">
+      <iframe
+        v-if="state.dialogShow"
+        class="preview-main-frame"
+        id="iframe-de-preview-pop"
+        :src="
+          state.url.startsWith('#/preview?dvId=')
+            ? `?${new Date().getTime()}${state.url}`
+            : state.url
+        "
+        allow="fullscreen"
+        scrolling="auto"
+        frameborder="0"
+      />
+    </div>
+  </el-dialog>
+  <IframeSelf v-if="appStore.getXpackValid" ref="xpackIframe" />
+</template>
+
+<script setup lang="ts">
+import { computed, reactive, ref, defineAsyncComponent } from 'vue'
+import { useEmbedded } from '@/store/modules/embedded'
+import { dvMainStoreWithOut } from '@/store/modules/data-visualization/dvMain'
+import { storeToRefs } from 'pinia'
+import { useAppStoreWithOut } from '@/store/modules/app'
+const IframeSelf = defineAsyncComponent(
+  () => import('@/views/component/embedded-iframe/IframeSelf.vue')
+)
+const dvMainStore = dvMainStoreWithOut()
+const appStore = useAppStoreWithOut()
+const { canvasStyleData } = storeToRefs(dvMainStore)
+const state = reactive({
+  dialogShow: false,
+  name: '',
+  fullscreen: false,
+  url: '',
+  width: '70vw',
+  height: '70%'
+})
+const xpackIframe = ref()
+const embeddedStore = useEmbedded()
+const dialogStyle = computed(() => {
+  if (state.fullscreen) {
+    return [
+      { '--ed-dialog-bg-color': canvasStyleData.value.dialogBackgroundColor },
+      { '--ed-dialog__de-text': canvasStyleData.value.dialogButton }
+    ]
+  } else {
+    return [
+      { '--ed-dialog-bg-color': canvasStyleData.value.dialogBackgroundColor },
+      { '--ed-dialog__de-text': canvasStyleData.value.dialogButton },
+      { height: state.height }
+    ]
+  }
+})
+
+const previewInit = params => {
+  if (params.url.includes('?')) {
+    state.url = `${params.url}&popWindow=true`
+  } else {
+    state.url = `${params.url}?popWindow=true`
+  }
+  if (params.size === 'large') {
+    state.fullscreen = true
+  } else if (params.size === 'middle') {
+    state.fullscreen = false
+    state.width = '80vw'
+    state.height = '80%'
+  } else {
+    state.fullscreen = false
+    state.width = '65vw'
+    state.height = '65%'
+  }
+  state.dialogShow = true
+  if (embeddedStore.getToken && state.url.includes('#/preview?dvId=')) {
+    if (xpackIframe?.value) {
+      xpackIframe.value.iframeInit(null)
+    }
+  }
+}
+
+defineExpose({
+  previewInit
+})
+</script>
+
+<style lang="less">
+.preview_pop_custom {
+  overflow: hidden;
+  .ed-dialog__close {
+    color: var(--ed-dialog__de-text);
+  }
+  :deep(.content-outer) {
+    background-color: var(--ed-dialog-bg-color) !important;
+  }
+  .preview-main-frame-outer {
+    width: 100%;
+    height: 100%;
+    .preview-main-frame {
+      width: 100%;
+      height: 100%;
+    }
+  }
+  .ed-dialog__body {
+    height: calc(100% - 42px);
+    padding: 0;
+  }
+  .ed-dialog__header {
+    height: 36px;
+    .ed-dialog__headerbtn {
+      top: 4px !important;
+      right: 8px !important;
+    }
+  }
+}
+</style>
