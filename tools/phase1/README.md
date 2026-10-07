@@ -30,3 +30,13 @@ node tools/phase1/community-compatibility.cjs
 [社区兼容检查](community-compatibility.cjs)核对app.pid对应本任务完整JAR，使用18100及源码真实/de2api前缀。验证主页、公钥接口、加密admin登录成功和错误密码拒绝；密码来自runtime/conf的私有文件，Token只在内存检查，不输出或存报告。该检查使用关闭企业模式的独立测试进程，不能用于证明企业认证已实现。
 
 实际结果分别写任务logs下database-boundary-results.json、community-api-results.json。这些是运行证据，不是新增文档格式或提交产物。任何失败保持失败状态，不能通过跳过、空结果或捕获后返回成功消除。
+
+## 登录初始化回归
+
+```bash
+node tools/phase1/login-startup-regression.cjs
+```
+
+[HMAC回归](login-startup-regression.cjs)通过已有esbuild编译实际前端模块，使用合成能力响应及密钥核对5类行为：明确社区跳过不存在的配置；扩展true/false、业务失败和HTTP失败均保留配置读取及正确签名。它不连接真实扩展服务，不加载私有配置，不安装依赖。
+
+真实桌面/移动登录及刷新另由浏览器验证，详情见[404根因与修复](../../project-docs/planning/w02-login-404.md)。首页200或登录接口成功不能代替页面初始化、加载遮罩和表单可用性检查。

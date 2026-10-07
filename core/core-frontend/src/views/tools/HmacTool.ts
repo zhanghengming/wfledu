@@ -7,6 +7,18 @@ const loadHmacInfo = async (baseUrl: string) => {
     }
     return window['de_secret_key']
   }
+  // Only the successful, explicit community capability result disables XPack HMAC.
+  // False, missing or failed capability responses must keep the existing HMAC path.
+  const modelXhr = new XMLHttpRequest()
+  modelXhr.open('get', baseUrl + '/xpackModel', false)
+  modelXhr.send()
+  if (modelXhr.status === 200 && modelXhr.responseText) {
+    const model = JSON.parse(modelXhr.responseText)
+    if (model.code === 0 && model.data === null) {
+      window['de_secret_key'] = 1
+      return null
+    }
+  }
   let res = null as any
   const url = baseUrl + '/perSetting/hmac/info'
   const xhr = new XMLHttpRequest()

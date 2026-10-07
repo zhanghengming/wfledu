@@ -131,7 +131,13 @@ const queryCategoryStatus = () => {
   const url = `/setting/authentication/status`
   return request.get({ url })
 }
-const init = (cb) => {
+const init = async (cb) => {
+  const model = await request.get({ url: '/xpackModel' })
+  if (model?.code === 0 && model.data === null) {
+    wsCache.delete('oidc-error')
+    cb?.()
+    return
+  }
   queryCategoryStatus().then(res => {
     if (res['data']) {
       const list: any[] = res['data'] as any[]

@@ -60,6 +60,10 @@ const validatePwd = value => {
   if (!value) {
     return true
   }
+  // Community login accepts the configured credential; the server verifies it.
+  if (!appStore.getXpackValid) {
+    return true
+  }
   const pattern =
     /^.*(?=.{6,20})(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[~!@#$%^&*()_+\-\={}|":<>?`[\];',.\/])[a-zA-Z0-9~!@#$%^&*()_+\-\={}|":<>?`[\];',.\/]*$/
   const regep = new RegExp(pattern)
@@ -227,7 +231,7 @@ const loadFail = () => {
 
 <template>
   <div
-    v-if="showPlatLoginMask"
+    v-if="appStore.getXpackValid && showPlatLoginMask"
     class="platform-login-mask"
     v-loading="true"
     :element-loading-text="t('auth.loading')"
