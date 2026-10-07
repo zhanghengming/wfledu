@@ -19,7 +19,9 @@ SOURCE = ROOT / 'source'
 TOOLS = SOURCE / 'tools/phase1'
 JAR = SOURCE / 'core/core-backend/target/CoreApplication.jar'
 TOOL_NAMES = ['login-test-context.py', 'browser-login-regression.cjs',
-              'verify-delivery.ps1', 'pre-push-check.sh', 'test-delivery-gate.py']
+              'verify-delivery.ps1', 'pre-push-check.sh', 'test-delivery-gate.py',
+              'login-startup-regression.cjs', 'community-compatibility.cjs',
+              'verify-database-boundary.py', 'verify-foundation.py']
 
 
 def require(value, code):
@@ -105,7 +107,8 @@ def checks(run_id):
         ('hmac', ['node', 'tools/phase1/login-startup-regression.cjs']),
         ('receiptGuard', ['python3', '-B', '-E', 'tools/phase1/test-delivery-gate.py']),
         ('api', ['node', 'tools/phase1/community-compatibility.cjs']),
-        ('database', ['python3', '-E', 'tools/phase1/verify-database-boundary.py'])
+        ('database', ['python3', '-E', 'tools/phase1/verify-database-boundary.py']),
+        ('foundation', ['python3', '-B', '-E', 'tools/phase1/verify-foundation.py'])
     ]
     results = {}
     for name, cmd in commands:
@@ -114,7 +117,8 @@ def checks(run_id):
                                     stderr=subprocess.STDOUT, timeout=180)
         require(result.returncode == 0, 'CHECK_FAILED_' + name.upper())
         results[name] = {'passed': True}
-    suites = {'EnterpriseAssemblyGuardTest': 12, 'AccessContextHolderTest': 10}
+    suites = {'EnterpriseAssemblyGuardTest': 12, 'AccessContextHolderTest': 10,
+              'FoundationConfigurationTest': 5, 'FoundationMigrationTest': 12}
     total = 0
     for name, minimum in suites.items():
         paths = list((SOURCE / 'core/core-backend/target/surefire-reports').glob('TEST-*.' + name + '.xml'))
@@ -130,10 +134,11 @@ def checks(run_id):
     results['hmac']['cases'] = 5
     guard_log = (out / 'receiptGuard.log').read_text()
     match = re.search(r'Ran (\d+) tests', guard_log)
-    require(match and int(match.group(1)) >= 10 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
+    require(match and int(match.group(1)) >= 11 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
     results['receiptGuard']['cases'] = int(match.group(1))
     for name, filename, expected in [('api', 'community-api-results.json', 4),
-                                     ('database', 'database-boundary-results.json', 14)]:
+                                     ('database', 'database-boundary-results.json', 14),
+                                     ('foundation', 'foundation-results.json', 10)]:
         path = ROOT / 'logs' / filename
         require(path.stat().st_mtime >= start, 'STALE_' + name.upper() + '_REPORT')
         body = path.read_bytes()
@@ -143,13 +148,16 @@ def checks(run_id):
         require(count == expected, 'WRONG_' + name.upper() + '_CASE_COUNT')
         (out / filename).write_bytes(body)
         results[name]['cases'] = count
-    for name, switch, marker in [
-            ('missing-services', 'true', 'Enterprise security assembly rejected'),
-            ('invalid-switch', 'tru', 'enterprise.enabled must be explicitly true or false')]:
+    for name, switch, marker, property_name in [
+            ('missing-services', 'true', 'Enterprise security assembly rejected', 'enterprise.enabled'),
+            ('invalid-switch', 'tru', 'enterprise.enabled must be explicitly true or false', 'enterprise.enabled'),
+            ('invalid-foundation', 'tru', 'enterprise.foundation.enabled must be explicitly true or false', 'enterprise.foundation.enabled')]:
         cmd = [env['JAVA_HOME'] + '/bin/java', '-Duser.home=' + str(ROOT / 'runtime/gate-home'),
                '-jar', str(JAR), '--spring.config.additional-location=file:' + str(
                    ROOT / 'runtime/gate-home/opt/dataease3.0/config/application.yml'),
-               '--enterprise.enabled=' + switch]
+               '--' + property_name + '=' + switch]
+        if property_name != 'enterprise.enabled':
+            cmd.append('--enterprise.enabled=false')
         path = out / ('gate-' + name + '.log')
         with path.open('wb') as stream:
             result = subprocess.run(cmd, cwd=ROOT, env=env, stdout=stream,
@@ -157,7 +165,7 @@ def checks(run_id):
         content = path.read_text()
         require(result.returncode == 1 and marker in content and not any(word in content for word in
                 ['HikariPool', 'Initialized JPA EntityManagerFactory', 'Tomcat started']), 'WRONG_GATE_REFUSAL')
-    results['enterpriseRefusal'] = {'passed': True, 'cases': 2}
+    results['enterpriseRefusal'] = {'passed': True, 'cases': 3}
     require(snapshot() == before, 'RUNTIME_OR_SOURCE_CHANGED_DURING_CHECKS')
     receipt = {'runId': run_id, 'identity': before, 'checks': results}
     (out / 'remote-checks.json').write_text(json.dumps(receipt, indent=2))
@@ -178,7 +186,7 @@ def verify_gate(head=None):
     remote = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'remote-checks.json').read_text())
     require(remote['identity'] == report['identity'] and remote['checks'] == report['checks'],
             'REMOTE_CHECK_RECEIPT_MISMATCH')
-    for name, minimum in [('unit', 22), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 2), ('receiptGuard', 10)]:
+    for name, minimum in [('unit', 39), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 11), ('foundation', 10)]:
         item = report['checks'].get(name, {})
         require(item.get('passed') is True and item.get('cases', 0) >= minimum, 'REQUIRED_CHECK_MISSING')
     required = {kind + '.' + case for kind in ['desktop', 'mobile']

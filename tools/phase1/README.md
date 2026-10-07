@@ -47,8 +47,12 @@ node tools/phase1/login-startup-regression.cjs
 ./tools/phase1/verify-delivery.ps1 -PlaywrightModulePath '<现有Playwright模块绝对路径>'
 ```
 
-[门禁说明](../../project-docs/development/login-regression.md)是本工具流程的主出处。[浏览器回归](browser-login-regression.cjs)直接操作实际表单，桌面/移动8项及3类故障控制；[远程上下文/检查器](login-test-context.py)核对专用进程、产品源码/JAR和实际页面资源、真实单测及接口/数据库/企业拒绝结果；[10项回执拒绝测试](test-delivery-gate.py)防止空、旧、失败或缺项结果放行。新一轮开始即使旧成功回执失效，失败或未完成时不能复用旧结果。
+[门禁说明](../../project-docs/development/login-regression.md)是本工具流程的主出处。[浏览器回归](browser-login-regression.cjs)直接操作实际表单，桌面/移动8项及3类故障控制；[远程上下文/检查器](login-test-context.py)核对专用进程、产品源码/JAR和实际页面资源、真实单测及接口/数据库/企业拒绝结果；[11项回执拒绝测试](test-delivery-gate.py)防止空、旧、失败或缺项结果放行。新一轮开始即使旧成功回执失效，失败或未完成时不能复用旧结果。
 
 只使用已有Chrome/Playwright模块，不自动安装、构建、部署、改剪贴板或重新启动服务。仅取专用admin凭据并送stdin，不保存密码/Token或完整私有配置。退出非零即失败，故障报告不当作正常通过。结果留唯一output/playwright/delivery/runId和远程logs/delivery-runId，最终门禁回执为logs/delivery-gate.json，生成证据不提交。
 
 [pre-push模板](pre-push-check.sh)安装在已核对无既有钩子的远程任务检出，阻止源码/测试工具变更在没有当前合格回执时推送；不会替代远端CI或人工合并评审，不覆盖既有钩子或修改全局Git配置。
+
+## W03基础迁移
+
+[verify-foundation.py](verify-foundation.py)只读验证任务元库4表/43列、13FK、17CHECK、注释/排序规则、2.40+4.1成功及空表。Java真实MySQL测试在远程enterprise-tests Profile运行，使用runtime/conf/w03-client.cnf最小权限账号及固定任务RSA公开密钥；新de_phase1_w03_*合成库保留，不删除数据。正式门禁要求39项Java、11项回执、10项元数据，见[设计](../../project-docs/development/foundation-migration.md)。

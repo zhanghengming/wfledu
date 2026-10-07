@@ -58,7 +58,7 @@ def main():
 SELECT COUNT(*),SUM(TABLE_COMMENT='') FROM information_schema.TABLES WHERE TABLE_SCHEMA IN ('de_phase1_ga','de_phase1_gb');
 SELECT COUNT(*),SUM(COLUMN_COMMENT='') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA IN ('de_phase1_ga','de_phase1_gb');
 SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA IN ('de_phase1_ga','de_phase1_gb') AND CONSTRAINT_TYPE='CHECK';
-SELECT version,success+0 FROM de_phase1_meta.de_standalone_version;
+SELECT version,success+0 FROM de_phase1_meta.de_standalone_version WHERE version LIKE '2.%' ORDER BY installed_rank;
 """)
     assert metadata.returncode == 0
     rows = metadata.stdout.strip().splitlines()
