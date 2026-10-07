@@ -11,5 +11,6 @@
 | 编号 | 上游文件/入口 | 变更原因 | 扩展替代方案 | 升级冲突风险 | 回归用例 | 负责人 |
 | --- | --- | --- | --- | --- | --- | --- |
 | ENT-001（W02/T01） | core-backend新增enterprise/bootstrap；core-backend/pom.xml增加enterprise-tests Profile | 企业必需安全服务缺失、歧义或社区替补共存时，在普通Bean初始化前拒绝启动；默认社区模式保持兼容 | 复用公开LoginApi/ResourceAuthApi/RowPermissionsApi/ColumnPermissionsApi；以Spring启动门禁扩展，不修改原查询和登录接口 | 低到中：上游认证/权限API或替补类变化需复核；测试Profile同时明确启用standalone | EnterpriseAssemblyGuardTest；完整应用拒绝启动；见[实现与验证](enterprise-bootstrap.md) | 本项目 |
+| ENT-002（W02/T01） | SDK common新增enterprise/context；api-permissions新增AccessContextResolver；core启动门禁追加必需类型及企业测试 | 提供不可变集团/用户/版本事实和显式线程作用域；缺上下文拒绝；仅旧权限API齐备不能代替集团身份能力 | 新增共享基础/认证适配契约，不改原HTTP/查询接口，不注册全局过滤器；W03实现可信解析和接入 | 中：共享契约及后续请求/任务生命周期需独立评审，不能从客户端构造身份；嵌入上限另须明确携带 | AccessContextHolderTest；解析器缺失/名称伪造拒绝；完整包SDK字节核对；见[实现与验证](enterprise-context.md) | 本项目 |
 
 `de-xpack` 不参与自研实现与公开提交。涉及 SDK 契约变更时，核对社区替补实现、现有 XPack API 契约及前端调用，但不访问或复制专有实现。

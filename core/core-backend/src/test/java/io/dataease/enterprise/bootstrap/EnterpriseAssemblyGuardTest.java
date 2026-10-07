@@ -4,6 +4,7 @@ import io.dataease.api.permissions.auth.api.ResourceAuthApi;
 import io.dataease.api.permissions.dataset.api.ColumnPermissionsApi;
 import io.dataease.api.permissions.dataset.api.RowPermissionsApi;
 import io.dataease.api.permissions.login.api.LoginApi;
+import io.dataease.api.permissions.enterprise.AccessContextResolver;
 import io.dataease.auth.config.SubstituleLoginConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
@@ -51,7 +52,8 @@ class EnterpriseAssemblyGuardTest {
                             .hasMessageContaining("LoginApi")
                             .hasMessageContaining("ResourceAuthApi")
                             .hasMessageContaining("RowPermissionsApi")
-                            .hasMessageContaining("ColumnPermissionsApi");
+                            .hasMessageContaining("ColumnPermissionsApi")
+                            .hasMessageContaining("AccessContextResolver");
                     assertThat(initialized).hasValue(0);
                 });
     }
@@ -71,7 +73,7 @@ class EnterpriseAssemblyGuardTest {
 
     @Test
     void eachRequiredServiceIsMandatory() {
-        Class<?>[] apis = {LoginApi.class, ResourceAuthApi.class, RowPermissionsApi.class, ColumnPermissionsApi.class};
+        Class<?>[] apis = {LoginApi.class, ResourceAuthApi.class, RowPermissionsApi.class, ColumnPermissionsApi.class, AccessContextResolver.class};
         for (Class<?> absent : apis) {
             ApplicationContextRunner configured = runner.withPropertyValues("enterprise.enabled=true");
             if (absent != LoginApi.class) {
@@ -85,6 +87,9 @@ class EnterpriseAssemblyGuardTest {
             }
             if (absent != ColumnPermissionsApi.class) {
                 configured = configured.withBean(ColumnPermissionsApi.class, () -> mock(ColumnPermissionsApi.class));
+            }
+            if (absent != AccessContextResolver.class) {
+                configured = configured.withBean(AccessContextResolver.class, () -> mock(AccessContextResolver.class));
             }
             configured.run(context -> assertThat(context.getStartupFailure())
                     .hasMessageContaining(absent.getSimpleName() + " requires exactly one implementation (found 0)"));
@@ -131,7 +136,18 @@ class EnterpriseAssemblyGuardTest {
         completeAssembly().run(context -> assertThat(context).hasNotFailed());
     }
 
+    @Test
+    void legacyApisAndAResolverBeanNameDoNotProveTrustedGroupResolution() {
+        legacyApis().withBean("accessContextResolver", Object.class, Object::new)
+                .run(context -> assertThat(context.getStartupFailure())
+                        .hasMessageContaining("AccessContextResolver requires exactly one implementation (found 0)"));
+    }
+
     private ApplicationContextRunner completeAssembly() {
+        return legacyApis().withBean(AccessContextResolver.class, () -> mock(AccessContextResolver.class));
+    }
+
+    private ApplicationContextRunner legacyApis() {
         // A typed adapter with a different name must not make the legacy name-based fallback safe.
         return runner.withPropertyValues("enterprise.enabled=true")
                 .withBean("typedEnterpriseLogin", LoginApi.class, () -> mock(LoginApi.class))

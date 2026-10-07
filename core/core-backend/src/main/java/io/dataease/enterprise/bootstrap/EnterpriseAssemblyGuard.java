@@ -4,6 +4,7 @@ import io.dataease.api.permissions.auth.api.ResourceAuthApi;
 import io.dataease.api.permissions.dataset.api.ColumnPermissionsApi;
 import io.dataease.api.permissions.dataset.api.RowPermissionsApi;
 import io.dataease.api.permissions.login.api.LoginApi;
+import io.dataease.api.permissions.enterprise.AccessContextResolver;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
@@ -22,7 +23,7 @@ import java.util.List;
 final class EnterpriseAssemblyGuard implements BeanFactoryPostProcessor, PriorityOrdered {
 
     private static final List<Class<?>> REQUIRED_APIS = List.of(
-            LoginApi.class, ResourceAuthApi.class, RowPermissionsApi.class, ColumnPermissionsApi.class);
+            LoginApi.class, ResourceAuthApi.class, RowPermissionsApi.class, ColumnPermissionsApi.class, AccessContextResolver.class);
     private static final String COMMUNITY_LOGIN_CONFIG = "io.dataease.auth.config.SubstituleLoginConfig";
     private static final String COMMUNITY_PERMISSIONS_PREFIX = "io.dataease.substitute.permissions.";
     private final Environment environment;
