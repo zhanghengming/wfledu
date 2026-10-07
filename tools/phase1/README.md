@@ -40,3 +40,15 @@ node tools/phase1/login-startup-regression.cjs
 [HMAC回归](login-startup-regression.cjs)通过已有esbuild编译实际前端模块，使用合成能力响应及密钥核对5类行为：明确社区跳过不存在的配置；扩展true/false、业务失败和HTTP失败均保留配置读取及正确签名。它不连接真实扩展服务，不加载私有配置，不安装依赖。
 
 真实桌面/移动登录及刷新另由浏览器验证，详情见[404根因与修复](../../project-docs/planning/w02-login-404.md)。首页200或登录接口成功不能代替页面初始化、加载遮罩和表单可用性检查。
+
+## 正式登录与交付门禁
+
+```powershell
+./tools/phase1/verify-delivery.ps1 -PlaywrightModulePath '<现有Playwright模块绝对路径>'
+```
+
+[门禁说明](../../project-docs/development/login-regression.md)是本工具流程的主出处。[浏览器回归](browser-login-regression.cjs)直接操作实际表单，桌面/移动8项及3类故障控制；[远程上下文/检查器](login-test-context.py)核对专用进程、产品源码/JAR和实际页面资源、真实单测及接口/数据库/企业拒绝结果；[9项回执拒绝测试](test-delivery-gate.py)防止空、旧、失败或缺项结果放行。
+
+只使用已有Chrome/Playwright模块，不自动安装、构建、部署、改剪贴板或重新启动服务。仅取专用admin凭据并送stdin，不保存密码/Token或完整私有配置。退出非零即失败，故障报告不当作正常通过。结果留唯一output/playwright/delivery/runId和远程logs/delivery-runId，最终门禁回执为logs/delivery-gate.json，生成证据不提交。
+
+[pre-push模板](pre-push-check.sh)安装在已核对无既有钩子的远程任务检出，阻止源码/测试工具变更在没有当前合格回执时推送；不会替代远端CI或人工合并评审，不覆盖既有钩子或修改全局Git配置。
