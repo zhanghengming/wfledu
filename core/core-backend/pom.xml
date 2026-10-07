@@ -286,6 +286,26 @@
                 </plugins>
             </build>
         </profile>
+        <!-- Opt-in isolated enterprise regression entry; preserve normal packaging defaults. -->
+        <profile>
+            <id>enterprise-tests</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <skip>false</skip>
+                            <skipTests>false</skipTests>
+                            <includes>
+                                <include>**/enterprise/**/*Test.java</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 
     <build>
