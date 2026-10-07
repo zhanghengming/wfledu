@@ -89,6 +89,12 @@ def checks(run_id):
     before = snapshot()
     out = ROOT / 'logs' / ('delivery-' + run_id)
     out.mkdir(exist_ok=False)
+    # A new attempt immediately invalidates the previous success. A later failure
+    # must never leave an earlier same-HEAD success usable by pre-push.
+    (ROOT / 'logs/delivery-gate.json').write_text(json.dumps({
+        'schemaVersion': 1, 'passed': False, 'state': 'RUNNING', 'runId': run_id,
+        'identity': before, 'finishedUnix': time.time()
+    }))
     env = os.environ.copy()
     env['JAVA_HOME'] = '/usr/lib/jvm/java-21'
     env['PATH'] = env['JAVA_HOME'] + '/bin:' + env['PATH']
@@ -124,7 +130,7 @@ def checks(run_id):
     results['hmac']['cases'] = 5
     guard_log = (out / 'receiptGuard.log').read_text()
     match = re.search(r'Ran (\d+) tests', guard_log)
-    require(match and int(match.group(1)) >= 9 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
+    require(match and int(match.group(1)) >= 10 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
     results['receiptGuard']['cases'] = int(match.group(1))
     for name, filename, expected in [('api', 'community-api-results.json', 4),
                                      ('database', 'database-boundary-results.json', 14)]:
@@ -172,7 +178,7 @@ def verify_gate(head=None):
     remote = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'remote-checks.json').read_text())
     require(remote['identity'] == report['identity'] and remote['checks'] == report['checks'],
             'REMOTE_CHECK_RECEIPT_MISMATCH')
-    for name, minimum in [('unit', 22), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 2), ('receiptGuard', 9)]:
+    for name, minimum in [('unit', 22), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 2), ('receiptGuard', 10)]:
         item = report['checks'].get(name, {})
         require(item.get('passed') is True and item.get('cases', 0) >= minimum, 'REQUIRED_CHECK_MISSING')
     required = {kind + '.' + case for kind in ['desktop', 'mobile']

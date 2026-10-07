@@ -19,7 +19,7 @@ class DeliveryGateTest(unittest.TestCase):
         self.identity = {'head': 'synthetic-head', 'jarSha256': 'synthetic-jar'}
         self.run = '12345678-1234-1234-1234-123456789abc'
         checks = {name: {'passed': True, 'cases': count} for name, count in
-                  [('unit', 22), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 2), ('receiptGuard', 9)]}
+                  [('unit', 22), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 2), ('receiptGuard', 10)]}
         cases = [{'id': kind + '.' + action, 'status': 'passed'}
                  for kind in ['desktop', 'mobile']
                  for action in ['initialization', 'wrong-password', 'login', 'reload']]
@@ -84,6 +84,9 @@ class DeliveryGateTest(unittest.TestCase):
     def test_missing_negative_control_rejected(self):
         self.rejected(lambda report: report['negativeControls'].pop('loading-mask'),
                       'NEGATIVE_CONTROLS_MISSING')
+
+    def test_new_running_or_failed_attempt_invalidates_previous_success(self):
+        self.rejected(lambda report: report.update(passed=False, state='RUNNING'), 'DELIVERY_NOT_PASSED')
 
 
 if __name__ == '__main__':
