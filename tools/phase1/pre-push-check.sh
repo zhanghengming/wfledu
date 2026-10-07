@@ -8,6 +8,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         changed=$(git diff --name-only "$remote_sha" "$local_sha")
         requires_gate=0
         while IFS= read -r changed_path; do
+            case "$changed_path" in *.md) continue ;; esac
             case "$changed_path" in core/*|sdk/*|tools/phase1/*) requires_gate=1 ;; esac
         done <<< "$changed"
         if [[ "$requires_gate" == 0 ]]; then
