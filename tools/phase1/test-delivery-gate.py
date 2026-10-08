@@ -20,10 +20,11 @@ class DeliveryGateTest(unittest.TestCase):
         self.identity = {'head': 'synthetic-head', 'jarSha256': 'synthetic-jar'}
         self.run = '12345678-1234-1234-1234-123456789abc'
         checks = {name: {'passed': True, 'cases': count} for name, count in
-                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 20), ('foundation', 10)]}
+                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 23), ('foundation', 10)]}
         checks['unit']['schemaRegressions'] = sorted(gate.SCHEMA_REGRESSIONS)
         checks['unit']['jpaRegressions'] = sorted(gate.JPA_REGRESSIONS)
         checks['unit']['mappingRegressions'] = sorted(gate.MAPPING_REGRESSIONS)
+        checks['unit']['organizationRegressions'] = sorted(gate.ORGANIZATION_REGRESSIONS)
         cases = [{'id': kind + '.' + action, 'status': 'passed'}
                  for kind in ['desktop', 'mobile']
                  for action in ['initialization', 'wrong-password', 'login', 'reload']]
@@ -168,6 +169,31 @@ class DeliveryGateTest(unittest.TestCase):
         remote = self.root / 'logs' / ('delivery-' + self.run) / 'remote-checks.json'
         remote.write_text(json.dumps({'identity': self.identity, 'checks': report['checks']}))
         with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'):
+            self.verify(report)
+
+
+    def test_previous_72_case_receipt_cannot_pass_organization_work_package(self):
+        report = copy.deepcopy(self.report)
+        report['checks']['unit']['cases'] = 72
+        remote = self.root / 'logs' / ('delivery-' + self.run) / 'remote-checks.json'
+        remote.write_text(json.dumps({'identity': self.identity, 'checks': report['checks']}))
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'):
+            self.verify(report)
+
+    def test_enough_tests_cannot_replace_required_organization_regressions(self):
+        for suite, count in [('OrganizationHierarchyTest', 8), ('OrganizationTransactionTest', 12)]:
+            doc = ET.Element('testsuite', tests=str(count), failures='0', errors='0', skipped='0')
+            for i in range(count):
+                ET.SubElement(doc, 'testcase', name='unrelated_' + str(i))
+            with self.assertRaisesRegex(RuntimeError, 'ORGANIZATION_REGRESSION_CASES_MISSING'):
+                gate.validate_unit_suite(doc, suite)
+
+    def test_missing_organization_receipt_rejected_even_if_remote_matches(self):
+        report = copy.deepcopy(self.report)
+        report['checks']['unit']['organizationRegressions'].pop()
+        remote = self.root / 'logs' / ('delivery-' + self.run) / 'remote-checks.json'
+        remote.write_text(json.dumps({'identity': self.identity, 'checks': report['checks']}))
+        with self.assertRaisesRegex(RuntimeError, 'ORGANIZATION_REGRESSION_RECEIPT_MISSING'):
             self.verify(report)
 
 

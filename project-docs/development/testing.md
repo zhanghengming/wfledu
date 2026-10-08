@@ -56,3 +56,9 @@ Phase 0 先提供静态检查入口 `node tools/phase0-check.mjs`。功能测试
 ## W03 正式基础实体的现行门槛
 
 2026-10-08，本轮增加 FoundationJpaMappingTest 的 12 个必需命名用例，最低 Java 数量提高到 72（既有 60＋正式映射 12），保留结构 8／隔离 JPA 14，新增 mappingRegressions 回执字段及对应 XML 名称检查。回执自检提高到 20 项：数量相同但方法缺失、字段缺失以及旧 60 项回执均必须拒绝。当前正式工具以这些定义为准，上文 60／17 是上一单元门槛历史。新增映射已完成真实 MySQL／Boot 测试；整包结果以[本单元记录](foundation-jpa-mapping.md)为准。存储级乐观锁、清空和回滚不等于业务命令、epoch 自动维护或查询权限已实现。
+
+## W03 学校归属与组织事务的现行门槛
+
+2026-10-08，当前最低 92 项 Java＝原 72＋OrganizationHierarchyTest 8＋OrganizationTransactionTest 12；回执自检最低 23。上文 39/46/60/72 及 14/17/20 是历史单元门槛，当前统一以本节、[登录门禁](login-regression.md)和实际工具为准。原结构 8、JPA 隔离 14、映射 12 名称保持，新增组织 20 名称及 organizationRegressions 回执必须齐备；旧 72 项、仅数量足够但缺组织方法名、缺组织回执都拒绝。
+
+学校映射、组织树、CAS/清空、资格端口、事务内审计、并发和旧上下文覆盖见[本轮设计与验证](organization-domain.md)。真实 MySQL 中的管理资格和审计是明确的测试适配器，正式生产资格／审计／身份／企业 HTTP 尚未实现，不能据此验收完整企业权限。桌面移动 8、故障控制 3 类及既有包／进程一致性检查保持。

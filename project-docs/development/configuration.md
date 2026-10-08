@@ -29,3 +29,7 @@ enterprise.foundation.enabled默认false，只接受精确true/false。显式tru
 ## 正式企业实体的条件扫描
 
 2026-10-08，四表映射进入源码后，enterprise.foundation.enabled 精确 true 同时纳入 io.dataease.enterprise.* 持久化类型；默认／false 由 ManagedClassNameFilter 排除这个保留包，社区实体继续扫描。此包不得放社区持久化类型。显式 managed-types 或独立工厂不自动继承过滤；缺开关时手工注册企业表仍由映射守卫拒绝。没有新增 YAML 默认值、自动身份或管理接口。上文“新 JPA 实体尚未注册”是迁移单元历史，当前以[正式映射记录](foundation-jpa-mapping.md)为准。
+
+## 组织内核的装配边界
+
+2026-10-08，[组织内核](organization-domain.md)不新增配置开关或默认 Bean，构造必须显式给出同一 JPA 工厂／事务管理器、真实管理资格、同事务审计、时钟和正数遍历预算。当前没有生产资格／审计适配器，不开放企业 HTTP；测试适配器只在合成库夹具中装配。现有 enterprise.enabled=false 与 enterprise.foundation.enabled=true 仍仅表示社区兼容运行及基础映射，不是企业业务就绪。

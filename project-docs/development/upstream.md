@@ -27,3 +27,7 @@
 ## ENT-006：正式基础 JPA 映射与条件扫描
 
 2026-10-08，W03/T02。EnterpriseJpaConfiguration 增加 ManagedClassNameFilter；新增 identity.persistence 四实体及公共映射，不改社区扫描包、已有实体、非空合并切面、SDK/API 或 4.1。开关默认／false 排除企业保留包，true 扫描正式实体；自动 DDL 仍由 ENT-005 隔离。升级复核 Boot 对扫描过滤 Bean 的支持、显式 managed-types 与独立工厂的旁路；新 Repository 必须同步验证关闭模式注册和集团限定。新增 12 个真实 Boot/MySQL 回归进入门禁，见[实现记录](foundation-jpa-mapping.md)。
+
+## ENT-007：学校归属、组织领域与事务内核
+
+2026-10-08，W03/T02。新增 enterprise/tenant/domain 纯规则和 tenant/manage 内部 OrganizationTransactionKernel，沿四表 JPA、JpaTransactionManager、IDUtils.snowID()、标准错误码及 SDK AccessContext。未改社区查询／公开 API／非空合并切面，未新增正式 DDL、YAML 或 HTTP。内核不注册默认 Bean，正式资格和同事务审计实现未接入。升级需复核固定锁顺序、tenant 限定、批量 CAS／显式清空、事务回读以及学校作用域链。真实 MySQL／Boot 的 12 项和领域 8 项加入命名门禁，见[单元记录](organization-domain.md)；不访问或复制 XPack 实现。
