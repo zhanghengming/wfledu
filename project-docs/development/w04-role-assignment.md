@@ -70,4 +70,6 @@ ssh -o BatchMode=yes -o StrictHostKeyChecking=yes data_dev_zhm@124.221.139.87 'p
 
 SDK��ǰ�ˣ������־�ֱ�Ϊlogs/w04-step2-full-sdk.log��w04-step2-full-frontend.log��w04-step2-full-backend.log���ύǰ֤�ݹ鵵logs/w04-step2-precommit-gate.json����ӦdeliveryĿ¼����Bugʧ��֤�ݱ�����ԭ25��δ�ύ�޸����ݡ������ĵ�׷��ǰ�ֽں;ɷ���������˶Ա�����û������ԭ����
 
-Git��������HEAD�Ž�����������������д�ִ�У����յ�ǰ�ύ��passed״̬�˶�logs/delivery-gate.json������output/w04/w04-step2-delivery.md��w04-step2-post-delivery.md��¼Ϊ׼�������������ύǰ��ִ������HEAD��ͨ����
+Դ���ύ654ccf82d428ca8a6bacc30131cc53207a0517a5�����������֧codex/phase1-security-baseline��Զ��SHAһ�¡����ύ�Ž�ea65b81f-a131-480d-b445-6c5dac292ae0��ȫ�����������������ͨ�������ֻ�����ݺ˶�ʱSSH�жϣ�ԭ�ű��˳�1������logs/w04-step2-postcommit-interruption.json��600�������º˶�ͬһ��ȫ��ԭʼ֤�ݼ���ǰ����������ͬ�����ܻ�ִ�ϴ����ϸ�verify-gate���˳�0�������жϽű��˳���ð����������ɹ���ͨ����ִ�鵵logs/w04-step2-postcommit-gate.json��
+
+���κ����ĵ��ύֻ��ʵ�ʽ�������ı�Դ�룯���ߣ�JAR������������������ִ���û����̺��Ž����������ύǰ���жϺ���ļ�¼�����յ�ǰ�ύ��passed״̬�˶�logs/delivery-gate.json������output/w04/w04-step2-delivery.md��w04-step2-post-delivery.md��¼Ϊ׼����Щ�Ǳ���Ԫ����״̬��ڡ�
