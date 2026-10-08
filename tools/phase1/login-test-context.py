@@ -26,7 +26,21 @@ TOOL_NAMES = ['login-test-context.py', 'browser-login-regression.cjs',
 
 UNIT_SUITES = {'EnterpriseAssemblyGuardTest': 12, 'AccessContextHolderTest': 10,
                'FoundationConfigurationTest': 6, 'FoundationMigrationTest': 18,
-               'EnterpriseJpaIsolationTest': 14}
+               'EnterpriseJpaIsolationTest': 14, 'FoundationJpaMappingTest': 12}
+MAPPING_REGRESSIONS = {'FoundationJpaMappingTest.' + name for name in [
+    'defaultAutomaticScanExcludesEnterpriseAndKeepsCommunity',
+    'explicitFalseAutomaticScanExcludesEnterprise',
+    'enabledScanMapsExactlyFourTablesAndAllFortyThreeColumnsWithoutDdl',
+    'enabledMappingNeverCreatesMissingFoundationTables',
+    'fourProductionEntitiesRoundTripAssignedIdsAuditEnumsUnicodeAndSchoolCode',
+    'optimisticVersionRejectsStaleUpdatesForAllFourEntities',
+    'managedExplicitNullClearsOptionalFieldsAndReloadsOutsideContext',
+    'multiTableStateAndEpochRollbackTogetherAfterFlush',
+    'crossGroupParentAndSchoolReferencesRejectInBothDirections',
+    'disabledSchoolKeepsGloballyReservedSchoolCode',
+    'globalUserCanHaveTwoGroupMembersButNotDuplicateWithinGroup',
+    'immutableOwnershipAndNaturalKeysRemainUnchangedDuringOrdinaryJpaUpdate'
+]}
 JPA_REGRESSIONS = {'EnterpriseJpaIsolationTest.' + name for name in [
     'schemaOwnershipRegisteredEvenWhenFoundationSwitchIsAbsent',
     'existingProvidersAreRejectedWithoutOverwritingThem',
@@ -72,6 +86,8 @@ def validate_unit_suite(doc, name):
     require(expected <= observed, 'SCHEMA_REGRESSION_CASES_MISSING')
     expected_jpa = {case for case in JPA_REGRESSIONS if case.startswith(name + '.')}
     require(expected_jpa <= observed, 'JPA_REGRESSION_CASES_MISSING')
+    expected_mapping = {case for case in MAPPING_REGRESSIONS if case.startswith(name + '.')}
+    require(expected_mapping <= observed, 'MAPPING_REGRESSION_CASES_MISSING')
     return count
 
 
@@ -172,12 +188,13 @@ def checks(run_id):
     results['unit']['cases'] = total
     results['unit']['schemaRegressions'] = sorted(SCHEMA_REGRESSIONS)
     results['unit']['jpaRegressions'] = sorted(JPA_REGRESSIONS)
+    results['unit']['mappingRegressions'] = sorted(MAPPING_REGRESSIONS)
     hmac_log = (out / 'hmac.log').read_text()
     require('5 passed' in hmac_log, 'HMAC_CASE_COUNT_MISSING')
     results['hmac']['cases'] = 5
     guard_log = (out / 'receiptGuard.log').read_text()
     match = re.search(r'Ran (\d+) tests', guard_log)
-    require(match and int(match.group(1)) >= 17 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
+    require(match and int(match.group(1)) >= 20 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
     results['receiptGuard']['cases'] = int(match.group(1))
     for name, filename, expected in [('api', 'community-api-results.json', 4),
                                      ('database', 'database-boundary-results.json', 14),
@@ -229,13 +246,15 @@ def verify_gate(head=None):
     remote = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'remote-checks.json').read_text())
     require(remote['identity'] == report['identity'] and remote['checks'] == report['checks'],
             'REMOTE_CHECK_RECEIPT_MISMATCH')
-    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 17), ('foundation', 10)]:
+    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 20), ('foundation', 10)]:
         item = report['checks'].get(name, {})
         require(item.get('passed') is True and item.get('cases', 0) >= minimum, 'REQUIRED_CHECK_MISSING')
     require(set(report['checks']['unit'].get('schemaRegressions', [])) == SCHEMA_REGRESSIONS,
             'SCHEMA_REGRESSION_RECEIPT_MISSING')
     require(set(report['checks']['unit'].get('jpaRegressions', [])) == JPA_REGRESSIONS,
             'JPA_REGRESSION_RECEIPT_MISSING')
+    require(set(report['checks']['unit'].get('mappingRegressions', [])) == MAPPING_REGRESSIONS,
+            'MAPPING_REGRESSION_RECEIPT_MISSING')
     required = {kind + '.' + case for kind in ['desktop', 'mobile']
                 for case in ['initialization', 'wrong-password', 'login', 'reload']}
     browser = report['browser']

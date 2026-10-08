@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
+import org.springframework.orm.jpa.persistenceunit.ManagedClassNameFilter;
 
 import java.util.List;
 
@@ -15,6 +16,12 @@ import static org.hibernate.cfg.SchemaToolingSettings.HBM2DDL_FILTER_PROVIDER;
 @Configuration(proxyBeanMethods = false)
 public class EnterpriseJpaConfiguration {
     private static final String INTEGRATOR_PROVIDER = "hibernate.integrator_provider";
+
+    @Bean
+    ManagedClassNameFilter enterpriseManagedClassNameFilter(Environment environment) {
+        boolean foundation = "true".equals(environment.getProperty("enterprise.foundation.enabled", "false"));
+        return name -> foundation || !name.startsWith("io.dataease.enterprise.");
+    }
 
     @Bean
     @Order(Ordered.LOWEST_PRECEDENCE)

@@ -43,3 +43,8 @@ MySQL COLUMN_DEFAULT 对显式 DEFAULT NULL 和未声明默认均返回 NULL，�
 ## JPA隔离落地更新
 
 2026-10-08启动上述第2项独立开发单元，采用HibernatePropertiesCustomizer、SchemaFilterProvider及映射Integrator，设计/实现/实测主出处为[企业JPA隔离记录](../development/enterprise-jpa-isolation.md)。60项Java、17项回执检查及完整包/8项浏览器门禁已通过，最终提交对应回执按该记录和Git核对。版本分离和请求就绪控制仍待实施，原决策理由保留。
+
+
+## 正式映射衔接更新
+
+2026-10-08，四表正式映射及 Boot 条件扫描落实到新 W03 单元，详见[正式 JPA 映射](../development/foundation-jpa-mapping.md)。默认关闭不扫描企业保留包，开启仅启用存储映射和迁移验证，不代表企业请求就绪。历史 DDL 与自动 DDL 隔离契约保持；业务事务、可信身份与请求就绪继续按原依赖推进。

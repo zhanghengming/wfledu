@@ -22,3 +22,8 @@
 ## ENT-005：企业JPA结构所有权
 
 2026-10-08，W03/T02。新增EnterpriseJpaConfiguration、EnterpriseSchemaFilterProvider和EnterpriseMappingGuard，沿Boot/Hibernate公开扩展隔离de_ent_保留结构；不修改社区实体、JpaUpdateNonNullAspect、InitSqlListener、SDK/API或历史4.1 DDL。未知provider组合拒绝，升级时复核SPI、初始化顺序及配置覆盖。真实Boot/MySQL验证和限制见[本轮记录](enterprise-jpa-isolation.md)，新增14项Java进入正式命名门禁。
+
+
+## ENT-006：正式基础 JPA 映射与条件扫描
+
+2026-10-08，W03/T02。EnterpriseJpaConfiguration 增加 ManagedClassNameFilter；新增 identity.persistence 四实体及公共映射，不改社区扫描包、已有实体、非空合并切面、SDK/API 或 4.1。开关默认／false 排除企业保留包，true 扫描正式实体；自动 DDL 仍由 ENT-005 隔离。升级复核 Boot 对扫描过滤 Bean 的支持、显式 managed-types 与独立工厂的旁路；新 Repository 必须同步验证关闭模式注册和集团限定。新增 12 个真实 Boot/MySQL 回归进入门禁，见[实现记录](foundation-jpa-mapping.md)。

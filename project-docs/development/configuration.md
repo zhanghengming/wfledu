@@ -24,3 +24,8 @@ enterprise.foundation.enabled默认false，只接受精确true/false。显式tru
 ## 企业JPA结构所有权配置
 
 2026-10-08实现设计见[企业JPA隔离](enterprise-jpa-isolation.md)。过滤在社区/企业模式均注册，不提供关闭它的业务开关；企业映射要求enterprise.foundation.enabled=true。现有schema_filter_provider或integrator_provider配置冲突明确拒绝，不静默覆盖；其他自定义器不得覆盖该契约。独立EntityManagerFactory不会自动继承本配置，新增持久化单元前需独立验证。不新增YAML默认值或真实身份。
+
+
+## 正式企业实体的条件扫描
+
+2026-10-08，四表映射进入源码后，enterprise.foundation.enabled 精确 true 同时纳入 io.dataease.enterprise.* 持久化类型；默认／false 由 ManagedClassNameFilter 排除这个保留包，社区实体继续扫描。此包不得放社区持久化类型。显式 managed-types 或独立工厂不自动继承过滤；缺开关时手工注册企业表仍由映射守卫拒绝。没有新增 YAML 默认值、自动身份或管理接口。上文“新 JPA 实体尚未注册”是迁移单元历史，当前以[正式映射记录](foundation-jpa-mapping.md)为准。

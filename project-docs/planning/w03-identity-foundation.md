@@ -45,3 +45,8 @@ de_ent_user_credential、de_ent_platform_qualification、de_ent_login_session、
 ## 企业JPA隔离开发单元
 
 2026-10-08继续推进ADR-015前置要求，设计/源码调查/真实Boot与MySQL回归见[企业JPA隔离](../development/enterprise-jpa-isolation.md)。本单元60项Java、17项回执、整体构建及新包正式门禁已通过，证据以该记录及最终提交回执为准；不据此标记W03、P01或多租户业务完成。下一步仍为正式领域/JPA持久化及事务不变量，企业HTTP开放前落实请求就绪。
+
+
+## 四表正式映射开发单元
+
+2026-10-08，正式用户／集团／成员／组织实体、条件扫描及真实 MySQL 存储回归已实施，详见[本单元记录](../development/foundation-jpa-mapping.md)。本单元 72 项 Java／20 项回执为现行最低门槛，整包与最终 Git 结果以该记录为准。没有公共 CRUD 接口；下一步实施集团限定持久化命令、权威学校映射、树与父链不变量、CAS／清空／epoch 同事务，再接可信身份及请求就绪。开头 39 项迁移和 50a104/ace480 快照是历史，不能代表本轮当前交付。
