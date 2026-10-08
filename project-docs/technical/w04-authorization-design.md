@@ -1,103 +1,103 @@
-# W04��Ȩʵ�ֵļ���ϸ��
+# W04授权实现的技术细化
 
-�汾v0.2��2026-10-08��**��2����ɫ����ְ�������ʸ�仯������ʵ�֣�ʵ����֤״̬��[��Ԫ��¼](../development/w04-role-assignment.md)��������Ȩ��Ԥ�����ݵȺʹ洢�Դ�ʵʩ��** ���ļ�¼W04���̾���������Դ��ӵ㣬�����[Ȩ�޾���](../requirements/permission-matrix.md)��[API��Լ](api-contracts.md)��[�ֶ�Լ��](api-field-constraints.md)��[MySQL�ֵ�](mysql8-table-dictionary.md)������֤����ڼ�[W04������](../planning/w04-authorization.md)��
+版本v0.2，2026-10-08。**第2步角色／任职及管理资格变化保护已实现，实际验证状态见[单元记录](../development/w04-role-assignment.md)；其余授权、预览、幂等和存储仍待实施。** 本文记录W04工程决定和社区源码接点，不替代[权限矩阵](../requirements/permission-matrix.md)、[API契约](api-contracts.md)、[字段约束](api-field-constraints.md)和[MySQL字典](mysql8-table-dictionary.md)。任务及证据入口见[W04工作包](../planning/w04-authorization.md)。
 
-## 1. ����Դ����ʵ
+## 1. 本次源码事实
 
-�������ΪԶ������HEAD `0d0edb789766d98d99974485242009bc6e821970`��W03��Ʒ�ύ `473db8b63c1e7b5bc70e8d084a7d6ec8f20fd10d`�����Ķ�����������Դ�룬û�ж�ȡ����de-xpackʵ�֡�
+调查对象为远程任务HEAD `0d0edb789766d98d99974485242009bc6e821970`，W03产品提交 `473db8b63c1e7b5bc70e8d084a7d6ec8f20fd10d`。仅阅读社区／自研源码，没有读取或复制de-xpack实现。
 
-����Դ��·�������Զ������sourceĿ¼���������Ѻ˶���ڣ�����ʾ���ָĹ����롣
+以下源码路径均相对远程任务source目录；它们是已核对入口，不表示本轮改过代码。
 
-| ��ǰ��� | ������Ϊ | W04���� |
+| 当前入口 | 已有行为 | W04处理 |
 | --- | --- | --- |
-| `core/core-backend/src/main/java/io/dataease/enterprise/management/persistence/EnterpriseRole.java`��`EnterpriseRoleAssignment.java`��`EnterpriseAssignmentSchool.java` | 4.3�洢����ְ��Ȼ��Ϊ���ţ���Ա����ɫ��ѧУ���϶��� | ����ʵ�壻�����������벻���������ظ�����ɫ�� |
-| ͬ�� `EnterpriseSubject.java`��`EnterpriseAdminGrant.java` | ORG/ROLE/USER���ͻ����弰��������ʸ� | ��������Ǽǣ��������������ݲ��Էֱ���ֵ |
-| `enterprise/management/manage/ManagementAuthority.java` | ������ʵ�ʹ����ʸ񡢽�ֹ���ȡ�״̬��飻ROLE��Ψһ��ְ��ѧУ������ | �������й������壻ҵ��Ȩ�޶��������򣬲��ѹ�������ֵ�����ݷ�Χ |
-| ͬ�� `ManagementTransactions.java`��`GroupAdministrationInvariant.java` | Spring��EM����ʵ�����û������������޶�У�顢�����Ч��Ȩ����Ա | ������Ȩ���ö����񣻽�ɫ����ְ���ʸ񼰳�Ա��ϵ�仯���벻���� |
-| `enterprise/management/server/ManagementRequestFilter.java` | ��ȷ·�ɰ�������ֻ��members��organizations��resources�򿪼��������� | ��·������ͬʱ����·�ɼ�������������ࣻ����finally�����;���ڹر� |
-| ͬ�� `StrictManagementJson.java` | �ֲ���DTOת������ʽ64KiB���ޡ����16��ֻ���ܼ�String��Integer���ַ������� | ��Ƕ��DTO��Ҫ�ݹ�ṹ�����������������ַ��������߼����޸�ȫ��Jackson |
-| `enterprise/foundation/FoundationSchema.java` | ��ͨ���������Ƚ�EXTRAֻ���ܿջ�DEFAULT_GENERATED��δ��ȡ���ɱ���ʽ | ��չ�����������;�ȷУ�飬��ʵʩ������Ȼ������ʷDDL������� |
-| `enterprise/management/manage/ResourceOwnershipService.java` | ʵ�ʿհ�ԭ�����士��������ȡĿǰ��ƽ̨GROUP_READ_ALL VIEW | ��ͬһ�ܿض�ȡ��ڽ�����ͨ��ԴVIEW��������հ��غ�Լ���������ű༭��ȡ�� |
-| `sdk/common/src/main/java/io/dataease/dao/auto/entity/CoreDatasetGroup.java` | ʵ�����ݼ���Ŀ¼ģ�ͣ�nodeTypeΪdataset��folder������core-backend��ͬ���ļ� | DATASET�˶���ʵdataset�ڵ㼰������Ŀ¼�����������ֶ�ID�ܾ� |
+| `core/core-backend/src/main/java/io/dataease/enterprise/management/persistence/EnterpriseRole.java`、`EnterpriseRoleAssignment.java`、`EnterpriseAssignmentSchool.java` | 4.3存储，任职自然键为集团＋成员＋角色，学校集合独立 | 复用实体；补公开配置与不变量，不重复建角色表 |
+| 同包 `EnterpriseSubject.java`、`EnterpriseAdminGrant.java` | ORG/ROLE/USER类型化主体及七类管理资格 | 复用主体登记；管理能力与数据策略分别求值 |
+| `enterprise/management/manage/ManagementAuthority.java` | 事务内实际管理资格、禁止优先、状态检查；ROLE需唯一任职且学校均可用 | 保持现有管理语义；业务权限独立纯规则，不把管理布尔值当数据范围 |
+| 同包 `ManagementTransactions.java`、`GroupAdministrationInvariant.java` | Spring绑定EM／真实事务，用户／集团锁、修订校验、最后有效授权管理员 | 批量授权复用短事务；角色／任职／资格及成员关系变化纳入不变量 |
+| `enterprise/management/server/ManagementRequestFilter.java` | 精确路由白名单；只给members／organizations／resources打开集团作用域 | 新路径必须同时加入路由及集团作用域分类；保留finally清理和旧入口关闭 |
+| 同包 `StrictManagementJson.java` | 局部新DTO转换，流式64KiB上限、深度16；只接受简单String／Integer／字符串数组 | 新嵌套DTO需要递归结构白名单；不能沿用字符串数组逻辑或修改全局Jackson |
+| `enterprise/foundation/FoundationSchema.java` | 普通列描述；比较EXTRA只接受空或DEFAULT_GENERATED，未读取生成表达式 | 扩展生成列描述和精确校验，再实施策略自然键；历史DDL输出不变 |
+| `enterprise/management/manage/ResourceOwnershipService.java` | 实际空白原生看板＋归属；读取目前仅平台GROUP_READ_ALL VIEW | 在同一受控读取入口接入普通资源VIEW，不解除空白载荷约束、不开放编辑／取数 |
+| `sdk/common/src/main/java/io/dataease/dao/auto/entity/CoreDatasetGroup.java` | 实际数据集／目录模型，nodeType为dataset或folder；不是core-backend下同名文件 | DATASET核对真实dataset节点及归属；目录／物理表／字段ID拒绝 |
 
-������������DTO��API����sdk/api/api-permissions�����ĸ���ʵ�֣���������������ȷ��permission/domainλ�ã���ʵ���ؼ�������ŷ���permission/manage��HTTP��server������managementʵ�岻��Ŀ¼���ƶ���ȫ���ع���SDK����������Entity��Repository��
+所有新增公共DTO／API放在sdk/api/api-permissions，核心负责实现；纯领域规则放在明确的permission/domain位置，事实加载及事务编排放在permission/manage，HTTP在server。已有management实体不因目录名移动或全面重构。SDK不依赖核心Entity／Repository。
 
-## 2. ���ݡ���ְ�͹��������߽�
+## 2. 身份、任职和管理能力边界
 
-���Ŵ�����֤�����Ự��������ͨ�����ֹtenantId��α���û�ͷ��`subject.type=USER`��id��Ϊƽ̨�û�ID������˽��������ų�Ա�����ܸĳ�memberId����ɫcode�����󲻿ɸģ���ְUPDATE������Ա����ɫ��ͬ��ɫ��ѧУͨ��ͬһ��ְѧУ���ϱ���������ظ���ְ��
+集团从已验证管理会话解析；普通请求禁止tenantId和伪造用户头。`subject.type=USER`的id仍为平台用户ID，服务端解析本集团成员，不能改成memberId。角色code创建后不可改，任职UPDATE不换成员／角色；同角色多学校通过同一任职学校集合表达，不建立重复任职。
 
-ACTIVE��ְ��������ͬ������Ч��Ա����ɫ��1��500���ɿ�ѧУ��DISABLED������ѧУ�������������滻����EXPLICIT���ܱ�ʾȫ������ɫͣ��ʹ����ƥ��ʧЧ��������ɾ����ʷ��ְ����ԡ�
+ACTIVE任职必须引用同集团有效成员、角色及1—500个可靠学校；DISABLED允许空学校集。集合完整替换，空EXPLICIT不能表示全部。角色停用使后续匹配失效，不批量删除历史任职或策略。
 
-�����ʸ����Ǽ��ż�������������ЧMANAGE_AUTHORIZATION�����ñ��������������ҵ����Լ����Ź�����������Ҫ�����Ա�����ܶ�ȡ����Ȩҵ�����ݣ�ʼ�ղ�������ƽ̨�ʸ��缯��ί�С�
+管理资格仍是集团级独立能力。有效MANAGE_AUTHORIZATION可配置本集团三类主体的业务策略及集团管理能力，不要求管理员本人能读取被授权业务数据；始终不能配置平台资格或跨集团委托。
 
-**�������Ȩ����Լ����** MANAGE_ROLES�����԰��Լ���ְ���������ʸ�Ľ�ɫ��MANAGE_MEMBERS�����԰��Լ��ӽ��������ʸ����֯�����п��ܸı���Ч���������Ľ�ɫ״̬����ְ����Ա��֯��ϵ����֯״̬·�����Ƚ���Ӱ���Ա���ǰ��Ĺ������������������仯������֤�����߱��ǰӵ��MANAGE_AUTHORIZATION���������޸ĺ��õ����ʸ��Ȩ���������޸�����׷�Ӵ��ʸ񡣰�ȫ���ͬʱ��������Ч��Ȩ����Ա��ʧ��������ع�����һ���뵥Ԫ������ȷ��Ӱ�켯�ϼ�������֯�ں˵Ŀ�����չ�㡣
+**防间接提权工程约束：** MANAGE_ROLES不足以把自己任职到带管理资格的角色；MANAGE_MEMBERS不足以把自己加进带管理资格的组织。所有可能改变有效管理能力的角色状态、任职、成员组织关系及组织状态路径，比较受影响成员变更前后的管理能力；发生能力变化还须验证操作者变更前拥有MANAGE_AUTHORIZATION。不能以修改后获得的新资格鉴权。纯名称修改无需追加此资格。安全变更同时检查最后有效授权管理员；失败整事务回滚。下一编码单元必须先确认影响集合及现有组织内核的可用扩展点。
 
-���й����ʸ�ġ�ѧУ�����á���ҵ��Χ��ֵ�ֿ���ҵ����ְ��Χȡ�ɿ���ЧѧУ�Ľ�����ͣ��ѧУ���ô�����Χ���󣻲�����Ϊһ����ЧѧУ�˻���ALL�����Խ����ͣ�ñ߽�ֱ���ԡ�
+现有管理资格的“学校均可用”与业务范围求值分开：业务任职范围取可靠有效学校的交集，停用学校不得带来范围扩大；不能因为一个无效学校退化成ALL。各自结果和停用边界分别测试。
 
-## 3. ���������
+## 3. 策略与决策
 
-��ͨ�����Բ���DATA_ACCESS��RESOURCE_ACTION�������͡����ݼ�ֻ֧��VIEW/EXPORT/DRILL�����ſ��壯ģ����NONE��ѧУ����ƥ������ѧУ��EDITֻ������Դ��������ɫ������ԴNONEֻƥ����Ч��ְ��Դ��������ÿ���ͼ�������ݷ�Χ��
+普通策略仍采用DATA_ACCESS与RESOURCE_ACTION两种类型。数据集只支持VIEW/EXPORT/DRILL；集团看板／模板用NONE，学校副本匹配所属学校；EDIT只属于资源动作。角色集团资源NONE只匹配有效任职来源，不扩大该看板图表的数据范围。
 
-��������ֵ���ղ��ɱ䡢ͬ�汾�Ŀ�����ʵ�����ţ������޶�����Ч��Ա����ʽ��֯��ϵ����ɫ���ɶ���ְ��ѧУ�ɿ����������Լ���ʵ��Դ���ͣ�״̬����Ҫ��������ִ��JPA��ѯ��Redis���á�SQLƴ�ӻ���ݽ�ɫ�����жϡ�
+纯领域求值接收不可变、同版本的可信事实：集团／身份修订，有效成员及显式组织关系，角色及成对任职，学校可靠归属，策略及真实资源类型／状态。不要让领域函数执行JPA查询、Redis调用、SQL拼接或根据角色名称判断。
 
-����������չ����Դ��ÿ���ɫ�������������ְѧУ�󽻣��ٲ���ALLOW������ƥ��DENY�������ORGֻƥ����ȷ��Ա��ϵ�����Զ����Ӽ̳У�USER����������ȫ���̳С��������뵱ǰ������ЧѧУ�󽻡�EXPORT/DRILL���������VIEW�󽻣���ԴEDITҲ��VIEW�������������Զ�����ǰ��Ȩ�ޡ�
+按矩阵逐条展开来源：每项角色规则先与该项任职学校求交，再并集ALLOW、并集匹配DENY并相减；ORG只匹配明确成员关系，不自动父子继承；USER增补不覆盖全部继承。最终再与当前集团有效学校求交。EXPORT/DRILL结果必须与VIEW求交；资源EDIT也须VIEW，操作允许不自动授予前置权限。
 
-ƽ̨GROUP_READ_ALL������������Чר������ֻ������VIEW����ͨ���˽�ֹ��ȡ������ȷ�����⣻������EDIT��EXPORT��DRILL����VIEW������Ч�����ų�Ա����Ӧ��ͨ��Ȩ����Դ��ѧУ��Դ�Ž�������ƽ̨����������
+平台GROUP_READ_ALL独立处理：有效专属身份只能逐集团VIEW，普通个人禁止不取消该已确认例外；不隐授EDIT／EXPORT／DRILL。非VIEW仍须有效本集团成员及对应普通授权。资源／学校／源门禁不能因平台例外跳过。
 
-���߷���allowed���ڲ�reason�����ż��ţ��û�����Դ������������ѧУ����Դ��accessEpoch��identityEpoch����Դ�汾����Դ����grantId��subject���á�assignmentId��ƥ��ѧУ������Ȩ����ԱԤ���ɼ���Ԥ��Ŀ������ֻ��Ϊ��ʽ��ʵ�����������滻��ǰ��������߻���µ�ThreadLocal��
+决策返回allowed、内部reason、可信集团／用户／资源／动作、最终学校及来源、accessEpoch／identityEpoch／资源版本。来源包含grantId、subject引用、assignmentId及匹配学校；仅授权管理员预览可见。预览目标身份只作为显式事实参数，不能替换当前请求操作者或绑定新的ThreadLocal。
 
-Ԥ��������ӽ׶���ʵ��`authorizationAllowed`��`allowedSchoolIds`������Ծ��ߣ�`executionReady`��`pendingChecks`����ȡ���Ž���W04δ���Դ��ѧУ�ֶΰ�ʱexecutionReady=false�����ܽ������������Ƴɿ�ִ�в�ѯ��ResourceAction�ļ���NONE�����ѧУ�б�����Ϊȫ�����ݡ�
+预览输出增加阶段事实：`authorizationAllowed`／`allowedSchoolIds`表达策略决策；`executionReady`／`pendingChecks`表达取数门禁。W04未完成源／学校字段绑定时executionReady=false，不能将策略允许宣称成可执行查询；ResourceAction的集团NONE不借空学校列表解释为全量数据。
 
-## 4. API���ϸ��������
+## 4. API与严格解析方案
 
-���� `/de2api/api/enterprise/v1/`�����ýӿھ�POST JSON��Bearer���ݡ�Origin��ͳһ��Ӧ��������Ʋ��䡣��ʽSDK����ǰͬ��OpenAPI�;�ȷ�ֶ��嵥��
+沿用 `/de2api/api/enterprise/v1/`，配置接口均POST JSON，Bearer身份、Origin、统一响应及错误机制不变。正式SDK发布前同步OpenAPI和精确字段清单。
 
-| �ӿ��� | ��������ҪҪ�� |
+| 接口组 | 输入与主要要求 |
 | --- | --- |
-| roles/save��page | ����mode��id��expectedVersion��֧��code��name��status����ҳֻ�鱾���� |
-| assignments/save��page | memberId��roleId������schoolIds��status��������Է�Χ��version��������ѧУ�ͽ�ɫ�Ķ������� |
-| permissions/catalog | subject��resourceType����ҳ��ֻ���ر����ſɹ�����ѧУ����ԴԪ���ݣ�������ҵ������ |
-| permissions/rules/page | ���塢ɸѡ����ҳ������grantId/version/epoch��ѧУ��Χ���ڵ�ҳʱ������������������汾��ȡѧУҳ |
-| permissions/batch | �����塢expectedEpoch��idempotencyKey��1��200�����ͻ�UPSERT/DELETE��ѧУ���úϼơ�5000 |
-| admin-capabilities/page��batch | ����DTO�����ּ��Ź���������������ѧУ����Դ��Χ��ƽ̨�ʸ� |
-| permissions/preview | userId��policyKind����ʵresource��action�������Դ��ѧУ���޶���ִ��׼��״̬ |
+| roles/save、page | 沿用mode／id／expectedVersion分支，code／name／status；分页只查本集团 |
+| assignments/save、page | memberId／roleId／完整schoolIds／status；返回配对范围与version，不返回学校和角色的独立并集 |
+| permissions/catalog | subject、resourceType及分页；只返回本集团可管理的学校／资源元数据，不返回业务样本 |
+| permissions/rules/page | 主体、筛选及分页；返回grantId/version/epoch；学校范围大于单页时标明不完整，按规则版本读取学校页 |
+| permissions/batch | 单主体、expectedEpoch、idempotencyKey、1—200条类型化UPSERT/DELETE；学校引用合计≤5000 |
+| admin-capabilities/page、batch | 独立DTO，七种集团管理能力，不接受学校／资源范围或平台资格 |
+| permissions/preview | userId、policyKind、真实resource及action，输出来源／学校／修订和执行准备状态 |
 
-δ֪�ֶΡ��ظ�JSON��������UTF-8��β��JSON���Ƕ���Ƕ�ס�����ID������汾��null��ظ�ID���Ƿ�ö�ٺͿ��ֶ��������DTO�ֲ��ܾ����ݹ����������ȷrecord����������������������ⷴ�������Զ����С�CREATE��id/version��DELETEֻ����grantId/version��NONE��ASSIGNMENT����̬��Χ��Я��ids��resourceId��
+未知字段、重复JSON键、错误UTF-8、尾随JSON、非对象嵌套、数字ID、浮点版本、null项、重复ID、非法枚举和跨字段组合在新DTO局部拒绝。递归解析依据明确record／变体白名单，不根据任意反射类型自动放行。CREATE禁id/version；DELETE只允许grantId/version；NONE、ASSIGNMENT及动态范围禁携带ids或resourceId。
 
-ĿǰW03ʵװ������������64KiB������ݰ�256KiB������״��W04�ȱ���64KiB�����16��ҳ��С��100�������ַ����߽磻��Ŀ��ѧУ�����������ֽ�����ͬʱ���ã�������һ��ȷ�ܾ������ܲ���ִ�С���Ϊ�ﵽ����200��������֤�������ޡ�
+目前W03实装请求体上限是64KiB，总体草案256KiB不是现状。W04先保持64KiB、深度16、页大小≤100和现有字符串边界；条目／学校数量上限与字节上限同时适用，超出任一明确拒绝，不能部分执行。不为达到理论200条而无验证调大上限。
 
-��������ResultCode��DEException�������������ݡ���Ȩ�ޡ���Դ��ȫʧ�ܡ��汾���ظ�����ͻ�ؼ���W03��Ϊ���ڲ�SQL������ϸ�ڲ���¶�������ȶ�ԭ��ͶӰ����W04 DTO������ʱ����ʵ��ResultCode��ֵ��ManagementExceptionHandler��֤�����޸�ȫ����Ӧ�����Գ�ŵHTTP409��
+采用现有ResultCode和DEException；参数、无身份、无权限、资源安全失败、版本／重复键冲突沿既有W03行为，内部SQL／事务细节不外露。新增稳定原因投影仅限W04 DTO，编码时对照实际ResultCode数值和ManagementExceptionHandler验证，不修改全局响应或擅自承诺HTTP409。
 
-## 5. ���桢�ݵȡ���ʵ�����볷Ȩ
+## 5. 保存、幂等、事实加载与撤权
 
-д���������ݺͼ����������н������� owning JPA���񣬰������û��������������¼�Ȩ���˶�expectedEpoch���ۺ�version��ͬ�������ã�У��ȫ���������ִ��CAS��ѧУ������ʽ�滻����Ȼ����ͻ�ܾ���ALLOW��DENY���Բ��棬�޸Ĳ���������Ȼ���ݣ�������Ȼ������ͬ��DELETE��������δ�ύ�����ڵ�ͬ��Ȼ���滻������ȷflush˳�򲢼���ʵMySQL�ع顣
+写请求在身份和集团作用域中进入现有 owning JPA事务，按现有用户→集团锁序重新鉴权，核对expectedEpoch／聚合version及同集团引用，校验全部变更，再执行CAS／学校集合显式替换。自然键冲突拒绝；ALLOW与DENY可以并存，修改不换策略自然身份，调整自然身份用同批DELETE＋新增。未提交事务内的同自然键替换必须明确flush顺序并加真实MySQL回归。
 
-ͬһ�����ύ������ְ�������������汾������epoch����ƺͳɹ��ݵȽ�����κ�ʧ��ȫ���ع�����Ҫ��Repository�ǿպϲ�ʵ�ּ�����գ����������ݿ��쳣������ύ�����������в������expectedVersion��飻ͬ����ͬgrantId��������Ȼ���ظ��ܾ���
+同一事务提交规则／任职／管理能力、版本、集团epoch、审计和成功幂等结果；任何失败全部回滚。不要用Repository非空合并实现集合清空，不捕获数据库异常后继续提交。集团锁串行不能替代expectedVersion检查；同批相同grantId或新增自然键重复拒绝。
 
-�ݵ�������Ϊ��ǰ���ţ��������û����ȶ�����������������淶��ժҪ�������塢�汾��epoch��ȫ�����������ѧУ���ϣ���������ֻ������ҵ�������˳�򣬲����ַ�����Сд��հס�
+幂等作用域为当前集团＋操作者用户＋稳定操作名＋随机键；规范化摘要包含主体、版本／epoch、全部命令和完整学校集合，集合排序只消除无业务意义的顺序，不改字符串大小写或空白。
 
-�����Ⱥ��鵱ǰ�Ự�͵�ǰ�����ʸ��ٶ�ȡ���ύ�ݵȼ�¼��ͬ��ͬժҪ����ԭ��ȫ���Ԫ���ݣ�**���ٴ�д���������epoch**��ͬ����ͬժҪ�ܾ�������ԭ�ɹ������expectedEpoch���ٴ�ִ�У�ԭ�ύepoch�뵱ǰepoch�ֱ𷵻أ��ɽ��������Ȩƾ�ݡ����ڱ��洰��Ĭ��24Сʱ��������ȷ�ܾ������ڱ����Զ��������þɼ���ʧ�����񲻱��������IN_PROGRESS�ɹ������
+重试先核验当前会话和当前管理资格，再读取已提交幂等记录：同键同摘要返回原安全结果元数据，**不再次写规则或提升epoch**；同键不同摘要拒绝。命中原成功后不因旧expectedEpoch而再次执行；原提交epoch与当前epoch分别返回，旧结果不是授权凭据。首期保存窗口默认24小时，过期明确拒绝，不在本包自动清理或复用旧键。失败事务不保留半完成IN_PROGRESS成功结果。
 
-ֻ��������ID���汾���ύepoch������ƾ�ݡ�Ticket��ҵ�����ݻ��������������ֵ�response_ref��255�ַ������Ա���200����grant�����W04��ѡ�ֵ䲹result_metadata�н�JSON����[�ֵ䲹��](mysql8-table-dictionary.md#w04-storage-design)�����������¼�Ȩ������APP��֧��Ǩ�ƣ�����ǰ����Ƕ��Ӧ��������
+只存操作结果ID／版本／提交epoch，不存凭据、Ticket、业务数据或完整请求。总体字典response_ref的255字符不足以保存200条新grant结果，W04候选字典补result_metadata有界JSON，见[字典补充](mysql8-table-dictionary.md#w04-storage-design)。重试仍重新鉴权；后续APP分支另迁移，不提前创建嵌入应用依赖。
 
-��ʵ�����ڶ̶�������У���û��������޶���״̬����������ֻ����Ŀ���Ա�����壯��Դ�����ò����ɲ��ɱ���ʵ��������ѧУ��ѯ��ȫ������Ȩȫ�����ء���Ҫ��ҳ��ѧУ��Ԥ����Դʱÿҳ��expectedEpoch������version�������޶�ƴ�ӡ�Ԥ������д��Ƴɹ����������subject����ʽ�޸�������
+事实加载在短读事务中校验用户／集团修订和状态，批量加载只属于目标成员／主体／资源的引用并生成不可变事实；避免逐学校查询和全集团授权全量加载。需要分页读学校或预览来源时每页绑定expectedEpoch／规则version，不跨修订拼接。预览不得写审计成功变更、创建subject或隐式修复归属。
 
-W04�״β�����Ȩ�޾��ߣ������������¼���Ȩ����ʵ�����ݻ����޶��ı�ʱ�����ɾ��ߣ�ʧ�ܾܾ�������Ա��Ȩ�����Ự�ĺ�������������ֵ����ѯǰ������ǰ����ʽ���Э������Դ�޶���W05/W09����ʵ�֣�������W04�̶��������ѽ���ⲿSQL������̬��
+W04首次不缓存权限决策，后续请求重新加载权威事实。身份或集团修订改变时丢弃旧决策，失败拒绝；管理员撤权后保留会话的后续请求重新求值。查询前／交付前／流式块的协调器及源修订在W05/W09继续实现，不能用W04短读锁宣称已解决外部SQL交付竞态。
 
-## 6. �洢����������Ǩ�ƴ���
+## 6. 存储、生成列与迁移次序
 
-����4.3������4.4���ݻỰ��4.5��Դ������������ѡ4.6Ϊde_ent_grant��de_ent_grant_school��4.7ΪUSER��֧�ݵȴ洢��ִ��ǰ�����������б�������֤֧�֣�ע��������4Ǩ�ơ���ǰĿ�꼰ʵ�塣4.1��4.5����DDL����ʷָ�Ʋ��ñ仯��
+复用4.3六表、4.4身份会话及4.5资源归属。新增候选4.6为de_ent_grant／de_ent_grant_school，4.7为USER分支幂等存储；执行前先新增生成列表达与验证支持，注册连续组4迁移、当前目标及实体。4.1—4.5冻结DDL和历史指纹不得变化。
 
-������resource_key��principal_key�ı���ʽ��STORED��VIRTUAL��EXTRA���Ƿ��д��Ԫ���ݿɿ��Ժ�������������ڸ���MySQLʵ��󶨰棻��ǰ��ͨ����֤����ܾ����ǣ�����ֻ�ſ�EXTRA������ʽ�淶����������ȷ��չʾ�ȼۣ���ʹ�ÿ���lower��trim��������JPAֻ����������޶�Ӧ�ֶΡ�
+生成列resource_key／principal_key的表达式、STORED／VIRTUAL、EXTRA、是否可写、元数据可空性和索引均必须基于隔离MySQL实测后定版；当前普通列验证器会拒绝它们，不能只放宽EXTRA。表达式规范化仅接受明确的展示等价，不使用宽泛lower／trim。生成列JPA只读，浏览器无对应字段。
 
-��ר�úϳɿ�֤���տ⡢4.5�����������ظ�����������DDL���ύ��ʧ���˱����������ԣ�����������Ƿ���Ͼܾ���δ֪de_ent������ͼ�Ծܾ����°治�Զ�ALTERƯ�ƣ�����������orgId�²����������������Ĭ���������ԡ��������W03����һ��������������ʹ�ü�������ʷ�İ�����ȷ��Ȩ�ı��ݻָ�������ɾ���˱�������
+在专用合成库证明空库、4.5带行升级、重复启动、部分DDL已提交但失败账本保留的重试；反向外键及非法组合拒绝。未知de_ent表／视图仍拒绝，新版不自动ALTER漂移；不根据上游orgId猜测存量归属，不回填默认允许策略。升级后旧W03程序不一定可启动，回退使用兼容新历史的包或经明确授权的备份恢复，不能删除账本降级。
 
-W04��DATASET���Լо߱���ͬʱ����ʵ��CoreDatasetGroup dataset�ڵ㼰ͬID�����������鹹ID��Ŀ¼��֤������Ȩ��ͨ�������Ǽ�ֻ���ܿغϳɼо߽��У���ʽԴ�����ݼ���������W05���롣catalog��preview������SQL��������Ҳ���Ӳ��������Զ����ž�ͼ���ӿڡ�
+W04的DATASET测试夹具必须同时建立实际CoreDatasetGroup dataset节点及同ID归属，不用虚构ID／目录验证“数据权限通过”；登记只在受控合成夹具进行，正式源／数据集归属绑定由W05补齐。catalog与preview不返回SQL／样本，也不从策略允许自动开放旧图表接口。
 
-## 7. ������֤��Ժ���������Լ
+## 7. 三层验证与对后续包的契约
 
-ÿ��ͬʱ��֤�����������ʵJPA��Servlet��������Ʒ����֤��MVC��OSIV������W03©�����ģ�������������HTTP caseId�����Ž����������������������������ݵ�¼�����棯�ƶ���ʵ�������������ϼ����
+每项同时验证纯领域规则、真实JPA／Servlet及完整产品旧认证／MVC／OSIV链，沿W03漏测整改；新增方法名和HTTP caseId加入门禁，不靠数量增长。保留社区兼容登录、桌面／移动真实浏览器与三类故障检出。
 
-W04��Ҫ����������ѧУ��ɫ���桢ORG������ʽ�̳С����˽�ֹ����ƥ�������EXPORT��VIEW����ƽ̨��ɫ���缯�����壯ѧУ����Դ��������λع���ͬ��Ȼ���ؽ�����ͬ�����ݵ��طš���Ȩ�����ԡ�ͨ����֯����ɫ��ְ��Ȩ��������Ա�Ƴ���Ԥ��α�����ݼ���ҳ���޶���
+W04必要负例包含：学校角色交叉、ORG父级隐式继承、个人禁止仅扣匹配操作、EXPORT无VIEW、假平台角色、跨集团主体／学校／资源、混合批次回滚、同自然键重建、不同内容幂等重放、撤权后重试、通过组织／角色任职提权、最后管理员移除、预览伪造身份及分页跨修订。
 
-W05���ѵ�ǰAuthorizationDecision������Դ������Դ�󶨣�ѧУ�ֶκ�ִ�н������飻W06������ģ�����W07�ټ��û���App������W08����ͬAPIʵ������ҳ��W09��ͨ������ļ�����Ȩ���ֻ���ڲ��������룬������������ϴ������շ�Χ��ժҪ��
+W05消费当前AuthorizationDecision并加资源依赖／源绑定／学校字段和执行交付复查；W06加受限模型命令；W07再加用户×App交集；W08用相同API实现配置页；W09贯通任务和文件。授权结果只作内部可信输入，不接受浏览器上传的最终范围或摘要。
