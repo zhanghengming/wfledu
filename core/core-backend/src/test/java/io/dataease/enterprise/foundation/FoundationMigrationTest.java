@@ -258,7 +258,7 @@ class FoundationMigrationTest {
         for (var table : FoundationSchema.TABLES) {
             JdbcTemplate jdbc = migrated("defaultstartup");
             jdbc.execute("ALTER TABLE `" + table.name() + "` ALTER COLUMN status SET DEFAULT 'disabled'");
-            assertThatThrownBy(() -> new FoundationSchemaVerifier(new EnterpriseFoundationSqlBlock(jdbc)).run(null))
+            assertThatThrownBy(() -> new FoundationSchemaVerifier(jdbc).run(null))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("schema mismatch");
             assertThat(jdbc.queryForObject("SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='status'", String.class, table.name())).isEqualTo("disabled");
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM `" + table.name() + "`", Integer.class)).isZero();
@@ -283,7 +283,7 @@ class FoundationMigrationTest {
         school(jdbc, 101, 10, "001");
         assertThatThrownBy(() -> school(jdbc, 102, 10, "002"))
                 .isInstanceOf(org.springframework.dao.DataAccessException.class).satisfies(FoundationMigrationTest::integrityFailure);
-        assertThatThrownBy(() -> new FoundationSchemaVerifier(new EnterpriseFoundationSqlBlock(jdbc)).run(null))
+        assertThatThrownBy(() -> new FoundationSchemaVerifier(jdbc).run(null))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("schema mismatch");
         assertThat(jdbc.queryForObject("SELECT SUB_PART FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='de_ent_org' AND INDEX_NAME='uk_org_school_code'", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_org", Integer.class)).isEqualTo(1);
@@ -302,7 +302,7 @@ class FoundationMigrationTest {
                 assertThat(before).hasSize(2);
                 assertThat(before.get(1).get("COLUMN_NAME")).isNull();
             }
-            assertThatThrownBy(() -> new FoundationSchemaVerifier(new EnterpriseFoundationSqlBlock(jdbc)).run(null))
+            assertThatThrownBy(() -> new FoundationSchemaVerifier(jdbc).run(null))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("schema mismatch");
             assertThat(jdbc.queryForList("SELECT SEQ_IN_INDEX,COLUMN_NAME,COLLATION FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='de_ent_org' AND INDEX_NAME='uk_org_school_code' ORDER BY SEQ_IN_INDEX")).isEqualTo(before);
         }
@@ -317,7 +317,7 @@ class FoundationMigrationTest {
             assertThat(jdbc.queryForObject("SELECT CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND CONSTRAINT_NAME='ck_user_status'", String.class)).contains(literal);
             assertThatThrownBy(() -> jdbc.update("UPDATE de_ent_user SET status='ACTIVE' WHERE id=1"))
                     .isInstanceOf(org.springframework.dao.DataAccessException.class).satisfies(FoundationMigrationTest::integrityFailure);
-            assertThatThrownBy(() -> new FoundationSchemaVerifier(new EnterpriseFoundationSqlBlock(jdbc)).run(null))
+            assertThatThrownBy(() -> new FoundationSchemaVerifier(jdbc).run(null))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("schema mismatch");
             assertThat(jdbc.queryForObject("SELECT CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND CONSTRAINT_NAME='ck_user_status'", String.class)).contains(literal);
             assertThat(jdbc.queryForObject("SELECT status FROM de_ent_user WHERE id=1", String.class)).isEqualTo("DISABLED");
@@ -334,11 +334,11 @@ class FoundationMigrationTest {
     void startupVerifierDetectsMissingOrDriftedSchemaWithoutRepair() {
         JdbcTemplate jdbc = fresh("verify");
         EnterpriseFoundationSqlBlock block = new EnterpriseFoundationSqlBlock(jdbc);
-        assertThatThrownBy(() -> new FoundationSchemaVerifier(block).run(null)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new FoundationSchemaVerifier(jdbc).run(null)).isInstanceOf(IllegalStateException.class);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'de_ent_%'", Integer.class)).isZero();
         block.execute();
         jdbc.execute("ALTER TABLE de_ent_user ALTER CHECK ck_user_epoch NOT ENFORCED");
-        assertThatThrownBy(() -> new FoundationSchemaVerifier(block).run(null)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new FoundationSchemaVerifier(jdbc).run(null)).isInstanceOf(IllegalStateException.class);
         assertThat(jdbc.queryForObject("SELECT ENFORCED FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=DATABASE() AND CONSTRAINT_NAME='ck_user_epoch'", String.class)).isEqualTo("NO");
     }
 

@@ -56,3 +56,7 @@ SDK install、前端 build:distributed（含既有 build:flush）以及后端 st
 测试后再按领域／持久化／事务／身份／错误／查询路径复查：没有新增须放宽门禁的理由；首轮可空类型缺陷已修复并用原用例验证。保留集团锁一致性协议和无默认生产适配器的装配边界，不为使企业模式启动而补空实现。代码当前没有用户 HTTP 入口，因此上述结果不是企业资源越权／图表取数／嵌入端到端通过。正式资格／审计、可信请求身份及就绪控制按已有依赖推进；用户／团队独立评审仍待记录。
 
 验收本单元时，对照字段契约阅读本设计和 OrganizationHierarchyTest／OrganizationTransactionTest，确认真实 XML 与 organizationRegressions 的 20 个必需名字一致，再按 verify-delivery.ps1 复验。网页当前仅验收社区登录兼容，没有学校管理或业务权限页面。最终提交、提交后门禁、推送与产物一致性另存独立 Markdown：本地 output/w03/organization-domain-delivery.md、远程 logs/w03-organization-final-delivery.md；不把自身提交 ID 写入本次提交形成循环。旧目录／服务／业务库与原有未提交修改保留；15 个本轮文件或基于 HEAD 的文档增量纳入任务分支，不合入或生产发布。
+
+## 下一迁移依赖已落实
+
+2026-10-08，[历史迁移与当前目标分离](schema-version-evolution.md)完成代码和真实回归，覆盖冻结4.1、合成升级／重试及完整保留结构清单；本节替代上文“分离仍待”的进度状态，原历史理由保留。组织内核本身未变，正式资格／同事务审计／可信身份／请求就绪仍待，合成探针不是正式4.2表。下一单元按这些依赖推进。

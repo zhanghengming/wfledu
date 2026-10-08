@@ -33,3 +33,7 @@ enterprise.foundation.enabled默认false，只接受精确true/false。显式tru
 ## 组织内核的装配边界
 
 2026-10-08，[组织内核](organization-domain.md)不新增配置开关或默认 Bean，构造必须显式给出同一 JPA 工厂／事务管理器、真实管理资格、同事务审计、时钟和正数遍历预算。当前没有生产资格／审计适配器，不开放企业 HTTP；测试适配器只在合成库夹具中装配。现有 enterprise.enabled=false 与 enterprise.foundation.enabled=true 仍仅表示社区兼容运行及基础映射，不是企业业务就绪。
+
+## 迁移演进装配边界
+
+2026-10-08，[迁移演进](schema-version-evolution.md)不新增配置开关。FoundationSchemaVerifier使用JdbcTemplate与编译期当前目标，脱离历史SqlBlock；内部测试快照构造器不是可配置生产Bean或默认允许适配器。enterprise.foundation.enabled默认false及原严格开关验证保持；开启仍不等于enterprise.enabled或企业请求就绪。生产4.2未注册，正式资格／审计／身份依赖仍待。

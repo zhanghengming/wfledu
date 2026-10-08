@@ -23,7 +23,7 @@ public final class EnterpriseFoundationSqlBlock implements SqlBlock {
     }
 
     public void verifySchema() {
-        for (FoundationSchema.Table table : FoundationSchema.TABLES) {
+        for (FoundationSchema.Table table : FoundationSchemaV41.TABLES) {
             FoundationSchema.require(FoundationSchema.exists(jdbc, table), table);
             FoundationSchema.verify(jdbc, table);
         }
@@ -36,10 +36,10 @@ public final class EnterpriseFoundationSqlBlock implements SqlBlock {
                 || Integer.parseInt(version.split("[.-]")[2]) < 16) {
             throw new IllegalStateException("Enterprise foundation requires MySQL 8.0.16 or later in 8.0");
         }
-        for (FoundationSchema.Table table : FoundationSchema.TABLES) {
+        for (FoundationSchema.Table table : FoundationSchemaV41.TABLES) {
             if (FoundationSchema.exists(jdbc, table)) FoundationSchema.verify(jdbc, table);
         }
-        for (FoundationSchema.Table table : FoundationSchema.TABLES) {
+        for (FoundationSchema.Table table : FoundationSchemaV41.TABLES) {
             if (!FoundationSchema.exists(jdbc, table)) jdbc.execute(table.ddl());
             FoundationSchema.verify(jdbc, table);
         }

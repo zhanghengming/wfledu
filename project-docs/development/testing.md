@@ -62,3 +62,9 @@ Phase 0 先提供静态检查入口 `node tools/phase0-check.mjs`。功能测试
 2026-10-08，当前最低 92 项 Java＝原 72＋OrganizationHierarchyTest 8＋OrganizationTransactionTest 12；回执自检最低 23。上文 39/46/60/72 及 14/17/20 是历史单元门槛，当前统一以本节、[登录门禁](login-regression.md)和实际工具为准。原结构 8、JPA 隔离 14、映射 12 名称保持，新增组织 20 名称及 organizationRegressions 回执必须齐备；旧 72 项、仅数量足够但缺组织方法名、缺组织回执都拒绝。
 
 学校映射、组织树、CAS/清空、资格端口、事务内审计、并发和旧上下文覆盖见[本轮设计与验证](organization-domain.md)。真实 MySQL 中的管理资格和审计是明确的测试适配器，正式生产资格／审计／身份／企业 HTTP 尚未实现，不能据此验收完整企业权限。桌面移动 8、故障控制 3 类及既有包／进程一致性检查保持。
+
+## W03 迁移演进的现行门槛
+
+2026-10-08，本轮最低 Java 104＝既有92＋EnterpriseMigrationEvolutionTest 12，回执自检26。上文92/23及更早数量均为单元历史；现行值以本节、[登录门禁](login-regression.md)与执行工具一致定义。EVOLUTION_REGRESSIONS 的12个精确方法名必须出现于实际XML及 evolutionRegressions 回执，不接受旧92项、足数但缺名称或缺新回执。保留结构8、JPA隔离14、映射12、组织20的名字，桌面移动8与3类故障控制不变。
+
+覆盖矩阵与真实失败／修复记录见[迁移演进](schema-version-evolution.md)：生产版本实体／Repository／非空合并切面／监听器，空库及带行升级、部分DDL提交与重试、连续历史和只读当前校验。新增保留表清单必须覆盖未声明项拒绝及非保留近似名字允许；不能只验证声明表各字段。冻结历史DDL指纹从改动前产物取得。合成4.2不等于正式版本；企业就绪／HTTP及生产恢复仍待实施。

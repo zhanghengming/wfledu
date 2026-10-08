@@ -127,7 +127,7 @@ class EnterpriseJpaIsolationTest {
         runner(jdbc, true, true, MissingEnterprise.class, CommunityProbe.class).run(context -> assertThat(context).hasNotFailed());
         assertThat(tables(jdbc, "de_ent_missing_probe")).isZero();
         assertThat(tables(jdbc, "w03_community_probe")).isEqualTo(1);
-        assertThatThrownBy(() -> new FoundationSchemaVerifier(new EnterpriseFoundationSqlBlock(jdbc)).run(null))
+        assertThatThrownBy(() -> new FoundationSchemaVerifier(jdbc).run(null))
                 .isInstanceOf(IllegalStateException.class);
         assertThat(tables(jdbc, "de_ent_user")).isZero();
     }
@@ -154,7 +154,7 @@ class EnterpriseJpaIsolationTest {
         assertThat(jdbc.queryForObject("SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='de_ent_tenant' AND COLUMN_NAME='name'", String.class)).isEqualTo("varchar(64)");
         runner(jdbc, true, true, TenantRead.class, CommunityProbe.class).run(context -> assertThat(context).hasNotFailed());
         assertThat(structure(jdbc)).isEqualTo(before);
-        assertThatThrownBy(() -> new FoundationSchemaVerifier(new EnterpriseFoundationSqlBlock(jdbc)).run(null))
+        assertThatThrownBy(() -> new FoundationSchemaVerifier(jdbc).run(null))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("schema mismatch");
         assertThat(structure(jdbc)).isEqualTo(before);
     }

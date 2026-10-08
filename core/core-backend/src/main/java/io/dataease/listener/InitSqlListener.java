@@ -2,6 +2,7 @@ package io.dataease.listener;
 
 import io.dataease.dao.auto.entity.DeStandaloneVersion;
 import io.dataease.dao.auto.repo.DeStandaloneVersionRepository;
+import io.dataease.enterprise.foundation.EnterpriseMigrationHistory;
 
 import io.dataease.extensions.datasource.utils.SpringContextUtil;
 import io.dataease.initSql.SqlBlock;
@@ -38,6 +39,10 @@ public class InitSqlListener implements ApplicationRunner {
             groupedSqlBlocks.computeIfAbsent(versionGroup, k -> new ArrayList<>()).add(block);
         }
 
+        List<SqlBlock> enterpriseBlocks = groupedSqlBlocks.get("4");
+        if (enterpriseBlocks != null && !enterpriseBlocks.isEmpty()) {
+            EnterpriseMigrationHistory.validate(enterpriseBlocks, deStandaloneVersionRepository.findRecords());
+        }
         executeGroups(groupedSqlBlocks, "1", "2", "3", "4");
     }
 
@@ -73,6 +78,9 @@ public class InitSqlListener implements ApplicationRunner {
     }
 
     private void executeSql(SqlBlock sqlBlock, int versionRank) {
+        if ("4".equals(sqlBlock.getVersionGroup()) && versionRank <= 0) {
+            throw new IllegalStateException("Enterprise migration rank exhausted; no enterprise migration executed");
+        }
         LogUtil.info("Begin to migrate sql: " + sqlBlock.getVersion().getVersion());
         long time = System.currentTimeMillis();
 
@@ -117,7 +125,8 @@ public class InitSqlListener implements ApplicationRunner {
     private DeStandaloneVersion getLastVersion(String versionGroup) {
         List<DeStandaloneVersion> migratedVersions = deStandaloneVersionRepository.findRecords();
         for (DeStandaloneVersion migratedVersion : migratedVersions) {
-            if (migratedVersion.getVersion().startsWith(versionGroup)) {
+            if ("4".equals(versionGroup) ? EnterpriseMigrationHistory.ownsVersion(migratedVersion.getVersion())
+                    : migratedVersion.getVersion().startsWith(versionGroup)) {
                 return migratedVersion;
             }
         }

@@ -31,3 +31,7 @@
 ## ENT-007：学校归属、组织领域与事务内核
 
 2026-10-08，W03/T02。新增 enterprise/tenant/domain 纯规则和 tenant/manage 内部 OrganizationTransactionKernel，沿四表 JPA、JpaTransactionManager、IDUtils.snowID()、标准错误码及 SDK AccessContext。未改社区查询／公开 API／非空合并切面，未新增正式 DDL、YAML 或 HTTP。内核不注册默认 Bean，正式资格和同事务审计实现未接入。升级需复核固定锁顺序、tenant 限定、批量 CAS／显式清空、事务回读以及学校作用域链。真实 MySQL／Boot 的 12 项和领域 8 项加入命名门禁，见[单元记录](organization-domain.md)；不访问或复制 XPack 实现。
+
+## ENT-008：历史版本、当前目标及组4历史预检
+
+2026-10-08，W03/T02。InitSqlListener在任何组执行前增加组4连续计划／完整历史只读预检，组4最新版本使用准确命名空间，增加企业rank耗尽拒绝；其他组原行为和SDK Version保持。新增EnterpriseMigrationHistory和FoundationSchemaV41，4.1原DDL指纹不变；FoundationSchema只维护当前目标及通用比较，FoundationSchemaVerifier脱离历史SqlBlock并检查完整保留表清单，FoundationConfiguration沿原条件装配。升级复核版本Repository排序／rank、监听器顺序、MySQL元信息、冻结声明与当前目标同步。没有新增公共API、SDK依赖、正式4.2、默认身份或XPack实现。12个真实／纯规则演进方法进入固定门禁，详见[实现和限制](schema-version-evolution.md)。

@@ -27,7 +27,22 @@ TOOL_NAMES = ['login-test-context.py', 'browser-login-regression.cjs',
 UNIT_SUITES = {'EnterpriseAssemblyGuardTest': 12, 'AccessContextHolderTest': 10,
                'FoundationConfigurationTest': 6, 'FoundationMigrationTest': 18,
                'EnterpriseJpaIsolationTest': 14, 'FoundationJpaMappingTest': 12,
-               'OrganizationHierarchyTest': 8, 'OrganizationTransactionTest': 12}
+               'OrganizationHierarchyTest': 8, 'OrganizationTransactionTest': 12,
+               'EnterpriseMigrationEvolutionTest': 12}
+EVOLUTION_REGRESSIONS = {'EnterpriseMigrationEvolutionTest.' + name for name in [
+    'prefixSimilarVersionGroupCannotSuppressFoundationMigration',
+    'unsupportedNewerHistoryRejectsBeforeDdlVersionWritesAndCommunityBlocks',
+    'frozenV41DdlHashesAndNestedDescriptorsAreImmutable',
+    'duplicateNonCanonicalWrongGroupAndGappedPlansReject',
+    'unknownSkippedRegressedDuplicateAndIncompleteHistoriesReject',
+    'repeatedFailuresThenSuccessAndNextFailureRemainRetryable',
+    'otherGroupsKeepTheirExistingHistorySemantics',
+    'currentTargetSnapshotsCannotMutateFrozenHistory',
+    'realListenerEmptyUpgradeAndRepeatedStartupKeepCurrentTargetAndRows',
+    'partialSecondMigrationRetainsCommittedDdlAndRetriesWithoutV41',
+    'currentVerifierRejectsEvolvedDriftWithoutChangingHistoryOrRows',
+    'invalidPlansAndUnresolvedFailuresPreventActualVersionWrites'
+]}
 ORGANIZATION_REGRESSIONS = {'OrganizationHierarchyTest.' + name for name in [
     'unicodeWhitespaceControlsAndMalformedSurrogatesAreRejectedWithoutNormalization',
     'textLimitsCountUnicodeCodePointsAndPreserveSchoolCode',
@@ -114,6 +129,8 @@ def validate_unit_suite(doc, name):
     require(expected_mapping <= observed, 'MAPPING_REGRESSION_CASES_MISSING')
     expected_organization = {case for case in ORGANIZATION_REGRESSIONS if case.startswith(name + '.')}
     require(expected_organization <= observed, 'ORGANIZATION_REGRESSION_CASES_MISSING')
+    expected_evolution = {case for case in EVOLUTION_REGRESSIONS if case.startswith(name + '.')}
+    require(expected_evolution <= observed, 'EVOLUTION_REGRESSION_CASES_MISSING')
     return count
 
 
@@ -216,12 +233,13 @@ def checks(run_id):
     results['unit']['jpaRegressions'] = sorted(JPA_REGRESSIONS)
     results['unit']['mappingRegressions'] = sorted(MAPPING_REGRESSIONS)
     results['unit']['organizationRegressions'] = sorted(ORGANIZATION_REGRESSIONS)
+    results['unit']['evolutionRegressions'] = sorted(EVOLUTION_REGRESSIONS)
     hmac_log = (out / 'hmac.log').read_text()
     require('5 passed' in hmac_log, 'HMAC_CASE_COUNT_MISSING')
     results['hmac']['cases'] = 5
     guard_log = (out / 'receiptGuard.log').read_text()
     match = re.search(r'Ran (\d+) tests', guard_log)
-    require(match and int(match.group(1)) >= 23 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
+    require(match and int(match.group(1)) >= 26 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
     results['receiptGuard']['cases'] = int(match.group(1))
     for name, filename, expected in [('api', 'community-api-results.json', 4),
                                      ('database', 'database-boundary-results.json', 14),
@@ -273,7 +291,7 @@ def verify_gate(head=None):
     remote = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'remote-checks.json').read_text())
     require(remote['identity'] == report['identity'] and remote['checks'] == report['checks'],
             'REMOTE_CHECK_RECEIPT_MISMATCH')
-    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 23), ('foundation', 10)]:
+    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 26), ('foundation', 10)]:
         item = report['checks'].get(name, {})
         require(item.get('passed') is True and item.get('cases', 0) >= minimum, 'REQUIRED_CHECK_MISSING')
     require(set(report['checks']['unit'].get('schemaRegressions', [])) == SCHEMA_REGRESSIONS,
@@ -284,6 +302,8 @@ def verify_gate(head=None):
             'MAPPING_REGRESSION_RECEIPT_MISSING')
     require(set(report['checks']['unit'].get('organizationRegressions', [])) == ORGANIZATION_REGRESSIONS,
             'ORGANIZATION_REGRESSION_RECEIPT_MISSING')
+    require(set(report['checks']['unit'].get('evolutionRegressions', [])) == EVOLUTION_REGRESSIONS,
+            'EVOLUTION_REGRESSION_RECEIPT_MISSING')
     required = {kind + '.' + case for kind in ['desktop', 'mobile']
                 for case in ['initialization', 'wrong-password', 'login', 'reload']}
     browser = report['browser']

@@ -212,7 +212,7 @@ class FoundationJpaMappingTest {
             assertThat(entities(context.getBean(EntityManagerFactory.class))).hasSize(5);
         });
         assertThat(jdbc.queryForList("SHOW TABLES", String.class)).containsExactlyInAnyOrder("w03_test_owner", "w03_mapping_community");
-        assertThatThrownBy(() -> new FoundationSchemaVerifier(new EnterpriseFoundationSqlBlock(jdbc)).run(null)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new FoundationSchemaVerifier(jdbc).run(null)).isInstanceOf(IllegalStateException.class);
     }
 
     @Test

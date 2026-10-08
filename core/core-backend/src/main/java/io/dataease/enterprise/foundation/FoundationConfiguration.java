@@ -21,8 +21,8 @@ public class FoundationConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "enterprise.foundation.enabled", havingValue = "true")
-    FoundationSchemaVerifier foundationSchemaVerifier(EnterpriseFoundationSqlBlock block) {
-        return new FoundationSchemaVerifier(block);
+    FoundationSchemaVerifier foundationSchemaVerifier(JdbcTemplate jdbc) {
+        return new FoundationSchemaVerifier(jdbc);
     }
 
     @Bean
