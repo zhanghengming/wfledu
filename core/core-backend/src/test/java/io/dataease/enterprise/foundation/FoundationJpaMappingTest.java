@@ -188,7 +188,10 @@ class FoundationJpaMappingTest {
     void enabledScanMapsExactlyFourTablesAndAllFortyThreeColumnsWithoutDdl() {
         mapped("mappingcolumns", factory -> {
             assertThat(entities(factory)).containsExactlyInAnyOrder(EnterpriseUser.class, EnterpriseTenant.class,
-                    EnterpriseTenantMember.class, EnterpriseOrganization.class, CommunityMappingProbe.class);
+                    EnterpriseTenantMember.class, EnterpriseOrganization.class, CommunityMappingProbe.class,
+                    io.dataease.enterprise.identity.persistence.EnterpriseUserCredential.class,
+                    io.dataease.enterprise.identity.persistence.EnterprisePlatformQualification.class,
+                    io.dataease.enterprise.identity.persistence.EnterpriseLoginSession.class);
             var sessionFactory = factory.unwrap(SessionFactoryImplementor.class);
             int count = 0;
             for (var entry : TABLES.entrySet()) {
@@ -209,7 +212,7 @@ class FoundationJpaMappingTest {
         JdbcTemplate jdbc = FoundationMigrationTest.fresh("mappingmissing");
         runner(jdbc, "enterprise.foundation.enabled=true").run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(entities(context.getBean(EntityManagerFactory.class))).hasSize(5);
+            assertThat(entities(context.getBean(EntityManagerFactory.class))).hasSize(8);
         });
         assertThat(jdbc.queryForList("SHOW TABLES", String.class)).containsExactlyInAnyOrder("w03_test_owner", "w03_mapping_community");
         assertThatThrownBy(() -> new FoundationSchemaVerifier(jdbc).run(null)).isInstanceOf(IllegalStateException.class);

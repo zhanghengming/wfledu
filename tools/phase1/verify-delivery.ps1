@@ -31,6 +31,9 @@ function Compare-TaskIdentity($TaskBefore, $TaskAfter) {
     foreach ($taskField in @('head', 'jarSha256', 'sourceSha256', 'toolSha256', 'pid', 'processStartTicks', 'environment')) {
         if ($TaskBefore.$taskField -cne $TaskAfter.$taskField) { throw "Source/runtime changed: $taskField" }
     }
+    foreach ($taskField in @('pid', 'processStartTicks', 'argumentsSha256', 'configurationSha256')) {
+        if ($TaskBefore.controlRuntime.$taskField -cne $TaskAfter.controlRuntime.$taskField) { throw "Control runtime changed: $taskField" }
+    }
 }
 
 function Invoke-TaskBrowser([string]$TaskFault, [string]$TaskDirectory) {

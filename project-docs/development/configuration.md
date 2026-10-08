@@ -41,3 +41,9 @@ enterprise.foundation.enabled默认false，只接受精确true/false。显式tru
 ## 正式审计装配边界
 
 2026-10-08，foundation原开关条件注册4.1、正式4.2与当前五表验证器；默认关闭无新增DDL交互。开启仍不等于enterprise.enabled或企业请求就绪。审计适配器不注册默认Bean，必须显式传入实际工厂与可信Trace来源；组织管理资格、可信身份及HTTP就绪继续待实现。没有新配置键、默认身份或临时管理员位。见[正式审计](organization-audit.md)。
+
+## W03管理控制面开关
+
+详见[实施设计](w03-control-plane.md)及[验收环境](w03-acceptance.md)。enterprise.management.enabled默认false；开启要求foundation=true、enterprise.enabled=false，正式4.1—4.5迁移及私有受控初始化完成。bootstrap-file仅显式本机首次使用，权限600、严格JSON，不提供公开初始化；初始化成功后移除此参数，重启不重复授权。allowed-origins可配置精确http／https来源，默认空；不得使用星号或路径／用户信息。
+
+控制模式关闭旧业务、文件、分享、导出及嵌入入口，等待W04／W05／W07安全实现；新随机Bearer会话不兼容社区Token。配置必须同时满足Spring加载位置及ConfigUtils读取的user.home/opt/dataease3.0/config/application.yml，新任务home的缓存、文件和替补路径均指向自身。专用18120仅loopback、Hikari配置目标2条；完整产品实测该账号12条连接，容量按实际总数预算；旧3306／6379／8100及配置不改。ACTIVE集团只表示控制面身份可用，物理业务源需W06验证后开放。

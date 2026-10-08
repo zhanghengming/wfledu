@@ -67,6 +67,10 @@ class FoundationMigrationTest {
         JdbcTemplate jdbc = fresh(scenario);
         new EnterpriseFoundationSqlBlock(jdbc).execute();
         new EnterpriseAuditSqlBlock(jdbc).execute();
+        new EnterpriseAuthoritySqlBlock(jdbc).execute();
+        new EnterpriseCredentialSqlBlock(jdbc).execute();
+        new EnterpriseResourceSqlBlock(jdbc).execute();
+        new EnterpriseResourceSqlBlock(jdbc).execute();
         return jdbc;
     }
 
@@ -83,7 +87,7 @@ class FoundationMigrationTest {
     void emptySchemaHasExactFieldsCommentsIndicesChecksAndForeignKeys() {
         JdbcTemplate jdbc = migrated("empty");
         FoundationSchema.TABLES.forEach(table -> FoundationSchema.verify(jdbc, table));
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'de_ent_%'", Integer.class)).isEqualTo(5);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'de_ent_%'", Integer.class)).isEqualTo(15);
         for (var table : FoundationSchema.TABLES) {
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM `" + table.name() + "`", Integer.class)).isZero();
         }
@@ -340,6 +344,10 @@ class FoundationMigrationTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'de_ent_%'", Integer.class)).isZero();
         block.execute();
         new EnterpriseAuditSqlBlock(jdbc).execute();
+        new EnterpriseAuthoritySqlBlock(jdbc).execute();
+        new EnterpriseCredentialSqlBlock(jdbc).execute();
+        new EnterpriseResourceSqlBlock(jdbc).execute();
+        new EnterpriseResourceSqlBlock(jdbc).execute();
         new FoundationSchemaVerifier(jdbc).run(null);
         jdbc.execute("ALTER TABLE de_ent_user ALTER CHECK ck_user_epoch NOT ENFORCED");
         assertThatThrownBy(() -> new FoundationSchemaVerifier(jdbc).run(null)).isInstanceOf(IllegalStateException.class);

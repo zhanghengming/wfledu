@@ -36,4 +36,22 @@ public class FoundationConfiguration {
     EnterpriseAuditSqlBlock enterpriseAuditSqlBlock(JdbcTemplate jdbc) {
         return new EnterpriseAuditSqlBlock(jdbc);
     }
+
+    @Bean
+    @ConditionalOnProperty(name = "enterprise.foundation.enabled", havingValue = "true")
+    EnterpriseAuthoritySqlBlock enterpriseAuthoritySqlBlock(JdbcTemplate jdbc) {
+        return new EnterpriseAuthoritySqlBlock(jdbc);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "enterprise.foundation.enabled", havingValue = "true")
+    EnterpriseCredentialSqlBlock enterpriseCredentialSqlBlock(JdbcTemplate jdbc) {
+        return new EnterpriseCredentialSqlBlock(jdbc);
+    }
+    @Bean
+    @ConditionalOnProperty(name = "enterprise.foundation.enabled", havingValue = "true")
+    EnterpriseResourceSqlBlock enterpriseResourceSqlBlock(JdbcTemplate jdbc) {
+        return new EnterpriseResourceSqlBlock(jdbc);
+    }
+
 }

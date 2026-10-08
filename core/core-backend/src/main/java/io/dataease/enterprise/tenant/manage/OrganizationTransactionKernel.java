@@ -37,6 +37,7 @@ public final class OrganizationTransactionKernel {
                          Long schoolId, OrganizationNode.Status status) { }
     /** Full mutable configuration. Kind, school code, school ownership and tenant cannot be replaced. */
     public record Update(long id, long expectedVersion, String name, Long parentId, OrganizationNode.Status status) { }
+    public record Identity(OrganizationNode.Kind kind, String schoolCode, Long schoolId) { }
     public record Mutation(long id, long version, long accessEpoch) { }
     public record SchoolReference(long tenantId, long schoolId, String schoolCode, long version, long accessEpoch) { }
     public record Change(long tenantId, long organizationId, long actorId, long version, long accessEpoch,
@@ -111,11 +112,18 @@ public final class OrganizationTransactionKernel {
     }
 
     public Mutation update(Update command) {
+        return update(command,null);
+    }
+
+    /** New HTTP full configuration must agree with immutable stored attribution in this transaction. */
+    public Mutation update(Update command, Identity identity) {
         Objects.requireNonNull(command);
         if (command.id() <= 0 || command.expectedVersion() <= 0) throw error(ResultCode.PARAM_IS_INVALID);
         return command((em, tenant) -> {
             var access = AccessContextHolder.requireCurrent();
             var previous = requireNode(em, access.tenantId(), command.id());
+            if(identity!=null && (identity.kind()!=previous.kind() || !Objects.equals(identity.schoolCode(),previous.schoolCode())
+                    || !Objects.equals(identity.schoolId(),previous.schoolId())))throw error(ResultCode.PARAM_IS_INVALID);
             if (previous.version() != command.expectedVersion() || previous.version() == Long.MAX_VALUE) {
                 throw error(ResultCode.DATA_IS_WRONG);
             }

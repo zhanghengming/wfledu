@@ -16,7 +16,8 @@ async function main() {
     ['18010', '18110'].includes(base.port) && base.pathname === '/' && !base.search && !base.hash,
   'UNAPPROVED_BROWSER_TARGET');
   const input = JSON.parse(fs.readFileSync(0, 'utf8'));
-  requireCase(input.identity?.environment === 'w02-isolated-community-18100' &&
+  requireCase(input.identity?.environment === 'w03-community-18100-control-18120' &&
+    Number.isSafeInteger(input.identity?.controlRuntime?.pid) && input.identity.controlRuntime.pid > 0 &&
     input.credential?.username === 'admin' && typeof input.credential.password === 'string', 'INVALID_PRIVATE_INPUT');
   requireCase(/^[0-9a-f-]{36}$/.test(args['run-id']), 'INVALID_RUN_ID');
   const { chromium, devices } = require(path.resolve(args['module-path']));

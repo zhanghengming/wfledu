@@ -30,7 +30,7 @@ public final class OrganizationAuditAppender implements OrganizationTransactionK
         var access = AccessContextHolder.requireCurrent();
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || transaction == null || transaction != EntityManagerFactoryUtils.getTransactionalEntityManager(factory)
-                || !transaction.isJoinedToTransaction()) {
+                || !transaction.getTransaction().isActive()) {
             throw new IllegalStateException("Organization audit must join the owning transaction and factory");
         }
         // Spring exposes a factory proxy while Hibernate may return its native factory. The exact

@@ -34,6 +34,25 @@ public class EnterpriseAuditEvent {
 
     protected EnterpriseAuditEvent() { }
 
+    public enum ManagementEvent { LOGIN_SUCCEEDED, LOGIN_DENIED, PASSWORD_CHANGED, SESSION_CLOSED, CONTEXT_SWITCHED,
+        PLATFORM_INITIALIZED, USER_CREATED, TENANT_CREATED, MEMBER_CREATED, MEMBER_UPDATED, RESOURCE_REGISTERED }
+
+    /** Typed management events: no caller supplied names, credentials or arbitrary details. */
+    public static EnterpriseAuditEvent management(long id, LocalDateTime time, Long tenant, Long actor,
+                                                   ManagementEvent event, Long resource, Long epoch, long version) {
+        if (id <= 0 || time == null || event == null || version <= 0 || (tenant == null) != (epoch == null)
+                || tenant != null && (tenant <= 0 || epoch <= 0) || actor != null && actor <= 0 || resource != null && resource <= 0) {
+            throw new IllegalArgumentException("Invalid management audit facts");
+        }
+        var row = new EnterpriseAuditEvent();
+        row.id=id; row.createdAt=time; row.eventScope=tenant==null?"GLOBAL":"TENANT"; row.tenantId=tenant;
+        row.actorKind=actor==null?"SYSTEM":"USER"; row.actorUserId=actor; row.eventType=event.name();
+        row.resourceType=event.name().startsWith("MEMBER_")?"MEMBER":event==ManagementEvent.RESOURCE_REGISTERED?"DASHBOARD":event==ManagementEvent.USER_CREATED?"USER":event==ManagementEvent.TENANT_CREATED?"TENANT":"SESSION";
+        row.resourceId=resource; row.resultCode=event==ManagementEvent.LOGIN_DENIED?"DENIED":"SUCCESS";
+        row.traceId=java.util.UUID.randomUUID().toString(); row.accessEpoch=epoch; row.details="{\"version\":"+version+"}";
+        return row;
+    }
+
     public EnterpriseAuditEvent(long id, LocalDateTime createdAt, long tenantId, long actorUserId, String eventType,
                                long organizationId, String traceId, long accessEpoch, long version) {
         this.id = id;

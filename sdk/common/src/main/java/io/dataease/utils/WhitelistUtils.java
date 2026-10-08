@@ -54,6 +54,9 @@ public class WhitelistUtils {
 
     public static boolean match(String requestURI) {
         invalidUrl(requestURI);
+        if (io.dataease.enterprise.context.ManagementRequestBridge.permits(requestURI)) {
+            return true;
+        }
         if (StringUtils.startsWith(requestURI, getContextPath())) {
             requestURI = StringUtils.replaceOnce(requestURI, getContextPath(), "");
         }

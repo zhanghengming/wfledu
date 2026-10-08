@@ -2,6 +2,7 @@
 """Only the dedicated W02 environment. --private stdout must go to a private pipe."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -21,7 +22,7 @@ JAR = SOURCE / 'core/core-backend/target/CoreApplication.jar'
 TOOL_NAMES = ['login-test-context.py', 'browser-login-regression.cjs',
               'verify-delivery.ps1', 'pre-push-check.sh', 'test-delivery-gate.py',
               'login-startup-regression.cjs', 'community-compatibility.cjs',
-              'verify-database-boundary.py', 'verify-foundation.py']
+              'verify-database-boundary.py', 'verify-foundation.py', 'verify-w03-control.py']
 
 
 UNIT_SUITES = {'EnterpriseAssemblyGuardTest': 12, 'AccessContextHolderTest': 10,
@@ -127,6 +128,10 @@ SCHEMA_REGRESSIONS = {
 }
 
 
+UNIT_SUITES.update({'ManagementConfigurationTest': 3, 'ManagementRequestBridgeTest': 3, 'AuthorityMigrationTest': 6, 'CredentialMigrationTest': 7, 'ManagementAuthorityTest': 12, 'ManagementHttpBoundaryTest': 12, 'ManagementResponseTest': 1, 'ManagementSessionTest': 11, 'ResourceMigrationTest': 4, 'PasswordCodecTest': 3})
+W03_REGRESSIONS = set(['AuthorityMigrationTest.authorityDriftRefusesBeforeCreatingRemainingTables', 'AuthorityMigrationTest.committedFirstAuthorityTableFailureRetainsLedgerAndRetries', 'AuthorityMigrationTest.formalThreeStepEmptyPlanKeepsSuccessfulHistoryOnRestart', 'AuthorityMigrationTest.sixTableDescriptorsRemainImmutableAndFullyCommented', 'AuthorityMigrationTest.unknownSubjectTypeAndInvalidCapabilityCannotGrantAuthority', 'AuthorityMigrationTest.v42RowsSurviveRealListenerUpgradeWithoutReexecutingOldSteps', 'CredentialMigrationTest.committedCredentialDdlFailureRetainsFailedLedgerAndRetries', 'CredentialMigrationTest.credentialDriftRefusesBeforeCreatingRemainingTables', 'CredentialMigrationTest.explicitInitializationIsAtomicRestrictedAndCannotRepeat', 'CredentialMigrationTest.failedInitializationRollsBackAccountAndQualifications', 'CredentialMigrationTest.formalFourStepEmptyPlanRetainsHistoryAndProvidesNoCredentials', 'CredentialMigrationTest.privateInputRejectsPermissionsDuplicateKeysAndTrailingJson', 'CredentialMigrationTest.v43RowsSurviveListenerUpgradeWithoutOldStepsRepeating', 'ManagementAuthorityTest.disabledOrganizationAncestorDoesNotConferManagement', 'ManagementAuthorityTest.emptyDisabledOrNonSchoolRoleScopeRejects', 'ManagementAuthorityTest.explicitOrganizationGrantRequiresExactActiveMembership', 'ManagementAuthorityTest.explicitPersonalDenyOverridesOrganizationAllow', 'ManagementAuthorityTest.formalV43UpgradeRetainsRowsRepeatsAndRejectsCrossGroupSubject', 'ManagementAuthorityTest.membershipAndAdministratorRoleNameDoNotGrantManagement', 'ManagementAuthorityTest.missingContextAndMissingTransactionReject', 'ManagementAuthorityTest.otherGroupAndDisabledMemberCannotUseGrants', 'ManagementAuthorityTest.personalGrantEnablesRealOrganizationAndAuditTransaction', 'ManagementAuthorityTest.roleDenyOverridesPersonalAllowWithoutCombiningSchoolSets', 'ManagementAuthorityTest.roleGrantRequiresItsOwnActiveAssignmentAndSchools', 'ManagementAuthorityTest.staleIdentityTenantRevisionAndDisabledUserReject', 'ManagementConfigurationTest.defaultModeSuppliesNoIdentityOrRequestFilter', 'ManagementConfigurationTest.invalidSwitchRejectsBeforeAssembly', 'ManagementConfigurationTest.managementWithoutFoundationAndCombinedFullModeReject', 'ManagementHttpBoundaryTest.credentialsOriginsAndLegacyRoutesCannotBypassProductionFilter', 'ManagementHttpBoundaryTest.groupResourcesAndSchoolReferencesRejectBothDirectionsWithoutMetadata', 'ManagementHttpBoundaryTest.lastAdministratorAndImmutableSchoolAttributionCannotBeRemoved', 'ManagementHttpBoundaryTest.nativeOwnershipFailureRollsBackResourceEpochAndAuditThenRetries', 'ManagementHttpBoundaryTest.nativeOwnershipRequiresSelectedGroupAndNeverGrantsEditing', 'ManagementHttpBoundaryTest.platformQualificationsRemainIndependentAndRevocationIsImmediate', 'ManagementHttpBoundaryTest.realContextSwitchChecksMemberCasAndImmediateRevocation', 'ManagementHttpBoundaryTest.realLoginRefusesDuringMigrationAndOpensOnlyAfterInitialization', 'ManagementHttpBoundaryTest.realOrganizationMemberLifecycleHasAuditCasAndImmediateRevocation', 'ManagementHttpBoundaryTest.realPasswordChangeAndExpiryInvalidateExistingCredentials', 'ManagementHttpBoundaryTest.reusedRealHttpWorkerClearsGroupContextAfterRejectedRequests', 'ManagementHttpBoundaryTest.strictJsonRejectsUnknownDuplicateTypeTrailingAndOversizedBodies', 'ManagementRequestBridgeTest.activeScopeMatchesOnlyTheExactRequestAndClearsAfterException', 'ManagementRequestBridgeTest.headersAndPathsAloneNeverBypassNativeAuthentication', 'ManagementRequestBridgeTest.nestedOrOtherThreadScopesAndNonManagementPathsReject', 'ManagementResponseTest.downstreamCacheOverridesAndResetCannotExposeCredentialsToCaches', 'ManagementSessionTest.concurrentWrongPasswordsAllCountTowardsLock', 'ManagementSessionTest.corruptStoredParametersFailClosedWithoutCreatingSession', 'ManagementSessionTest.fiveFailuresLockAtomicallyAndExpiryRestartsCounter', 'ManagementSessionTest.forcedResetCannotSwitchAndPasswordChangeRevokesEveryOldSession', 'ManagementSessionTest.idleAndAbsoluteExpiryAndLogoutDenyFurtherUse', 'ManagementSessionTest.loginPersistsOnlyDigestAndReturnsUnselectedRestrictedIdentity', 'ManagementSessionTest.malformedTokensCannotSelectAnIdentity', 'ManagementSessionTest.memberSwitchRejectsOtherGroupAndStaleRevision', 'ManagementSessionTest.memberTenantAndIdentityRevocationApplyToExistingSessions', 'ManagementSessionTest.platformAllReadSwitchesWithoutMembershipButDoesNotBecomeOperate', 'ManagementSessionTest.unknownAndDisabledIdentityUseSameLoginErrorWithoutSession', 'PasswordCodecTest.independentSaltAndCorrectComparison', 'PasswordCodecTest.invalidPasswordsAreRejectedBeforeDerivation', 'PasswordCodecTest.malformedOrUnboundedParametersAreNeverAccepted', 'ResourceMigrationTest.committedResourceDdlFailureRetainsFailedLedgerAndSafelyRetries', 'ResourceMigrationTest.exactFiveStepEmptyPlanAndRepeatProvideNoResources', 'ResourceMigrationTest.ownershipConstraintsRejectBothGroupsAndPayloadClaims', 'ResourceMigrationTest.v44DataSurvivesResourceUpgradeWithoutHistoryRewrite'])
+W03_HTTP_CASES = set(['controller.view', 'formal.anonymous', 'formal.fake-group', 'formal.legacy-login', 'formal.login', 'formal.logout', 'formal.logout-replay', 'formal.correct-password-locked', 'formal.expired-session', 'role.personal-deny-overrides', 'role.no-school-cross-product', 'role.B-independent-allow', 'formal.untrusted-origin', 'formal.wrong-password', 'member.cas', 'member.create', 'member.disable', 'member.foreign-update', 'member.immediate-revocation', 'member.last-admin', 'member.list', 'member.no-implicit-management', 'organization.A-to-B', 'organization.B-to-A', 'organization.cas', 'organization.clear', 'organization.empty', 'organization.foreign-parent', 'organization.reopen', 'organization.unknown', 'platform.A-not-B', 'platform.B-not-A', 'platform.no-DRILL', 'platform.no-EDIT', 'platform.no-EXPORT', 'platform.select-A', 'platform.select-B', 'platform.view-A', 'platform.view-B', 'reader.no-platform-control', 'reader.revoked', 'resource.A-create', 'resource.A-to-B', 'resource.B-create', 'resource.B-to-A', 'resource.native-envelope-consistent', 'resource.no-rebind', 'resource.unregistered-native'])
+
 def require(value, code):
     if not value:
         raise RuntimeError(code)
@@ -152,11 +157,31 @@ def validate_unit_suite(doc, name):
     require(expected_evolution <= observed, 'EVOLUTION_REGRESSION_CASES_MISSING')
     expected_audit = {case for case in AUDIT_REGRESSIONS if case.startswith(name + '.')}
     require(expected_audit <= observed, 'AUDIT_REGRESSION_CASES_MISSING')
+    require({case for case in W03_REGRESSIONS if case.startswith(name + '.')} <= observed, 'W03_REGRESSION_CASES_MISSING')
     return count
 
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def control_snapshot():
+    home = ROOT / 'runtime/w03-control-home'
+    pid = int((home / 'app.pid').read_text())
+    proc = Path('/proc') / str(pid)
+    require(proc.stat().st_uid == os.getuid(), 'WRONG_CONTROL_PROCESS_OWNER')
+    args = [v.decode() for v in proc.joinpath('cmdline').read_bytes().split(b'\0') if v]
+    require(args == json.loads((home / 'arguments.json').read_text()) and '--server.port=18120' in args
+            and '-Duser.home=' + str(home) in args and not any('bootstrap-file=' in v for v in args), 'WRONG_CONTROL_RUNTIME')
+    config = home / 'opt/dataease3.0/config/application.yml'
+    require('--spring.config.additional-location=file:' + str(config) in args, 'CONTROL_CONFIGURATION_NOT_UNIFIED')
+    ticks = proc.joinpath('stat').read_text().split(') ')[1].split()[19]
+    boot = next(int(line.split()[1]) for line in Path('/proc/stat').read_text().splitlines() if line.startswith('btime '))
+    require(JAR.stat().st_mtime <= boot + int(ticks) / os.sysconf('SC_CLK_TCK'), 'CONTROL_JAR_REPLACED_AFTER_START')
+    with urllib.request.urlopen('http://127.0.0.1:18120/de2api/api/enterprise/v1/ready', timeout=5) as response:
+        require(json.load(response).get('code') == 0, 'CONTROL_NOT_READY')
+    return {'pid': pid, 'processStartTicks': ticks, 'argumentsSha256': digest((home / 'arguments.json').read_bytes()),
+            'configurationSha256': digest(config.read_bytes())}
 
 
 def snapshot():
@@ -208,8 +233,14 @@ def snapshot():
         'toolSha256': digest('\n'.join(name + ':' + digest((TOOLS / name).read_bytes())
                                      for name in TOOL_NAMES).encode()),
         'pid': pid, 'processStartTicks': ticks, 'assets': assets, 'entryAssets': entries,
-        'environment': 'w02-isolated-community-18100'
+        'environment': 'w03-community-18100-control-18120', 'controlRuntime': control_snapshot()
     }
+
+
+def validate_database_capacity(port, limit, connected):
+    require(port == 13306, 'WRONG_CAPACITY_DATABASE')
+    require(0 <= connected <= limit and limit - connected >= 12, 'INSUFFICIENT_DATABASE_HEADROOM')
+    return {'port': port, 'limit': limit, 'connected': connected, 'minimumHeadroom': 12}
 
 
 def checks(run_id):
@@ -227,6 +258,12 @@ def checks(run_id):
     env['JAVA_HOME'] = '/usr/lib/jvm/java-21'
     env['PATH'] = env['JAVA_HOME'] + '/bin:' + env['PATH']
     start = time.time()
+    spec = importlib.util.spec_from_file_location('capacity_boundary', TOOLS / 'verify-database-boundary.py')
+    boundary = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(boundary)
+    capacity = boundary.query('root', "SELECT @@port,@@max_connections,(SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='Threads_connected');")
+    require(capacity.returncode == 0, 'DATABASE_CAPACITY_UNAVAILABLE')
+    capacity_record = validate_database_capacity(*map(int, capacity.stdout.strip().split('\t')))
     commands = [
         ('unit', ['mvn', '-B', '-ntp', '-Dmaven.repo.local=' + str(ROOT / 'm2'),
                   '-f', 'core/core-backend/pom.xml', 'test', '-Pstandalone,enterprise-tests']),
@@ -234,13 +271,14 @@ def checks(run_id):
         ('receiptGuard', ['python3', '-B', '-E', 'tools/phase1/test-delivery-gate.py']),
         ('api', ['node', 'tools/phase1/community-compatibility.cjs']),
         ('database', ['python3', '-E', 'tools/phase1/verify-database-boundary.py']),
-        ('foundation', ['python3', '-B', '-E', 'tools/phase1/verify-foundation.py'])
+        ('foundation', ['python3', '-B', '-E', 'tools/phase1/verify-foundation.py']),
+        ('control', ['python3', '-B', '-E', 'tools/phase1/verify-w03-control.py', 'all'])
     ]
     results = {}
     for name, cmd in commands:
         with (out / (name + '.log')).open('wb') as stream:
             result = subprocess.run(cmd, cwd=SOURCE, env=env, stdout=stream,
-                                    stderr=subprocess.STDOUT, timeout=180)
+                                    stderr=subprocess.STDOUT, timeout=900 if name == 'unit' else 180)
         require(result.returncode == 0, 'CHECK_FAILED_' + name.upper())
         results[name] = {'passed': True}
     total = 0
@@ -250,22 +288,24 @@ def checks(run_id):
         doc = ET.parse(paths[0]).getroot()
         total += validate_unit_suite(doc, name)
     results['unit']['cases'] = total
+    results['unit']['databaseCapacity'] = capacity_record
     results['unit']['schemaRegressions'] = sorted(SCHEMA_REGRESSIONS)
     results['unit']['jpaRegressions'] = sorted(JPA_REGRESSIONS)
     results['unit']['mappingRegressions'] = sorted(MAPPING_REGRESSIONS)
     results['unit']['organizationRegressions'] = sorted(ORGANIZATION_REGRESSIONS)
     results['unit']['evolutionRegressions'] = sorted(EVOLUTION_REGRESSIONS)
     results['unit']['auditRegressions'] = sorted(AUDIT_REGRESSIONS)
+    results['unit']['w03Regressions'] = sorted(W03_REGRESSIONS)
     hmac_log = (out / 'hmac.log').read_text()
     require('5 passed' in hmac_log, 'HMAC_CASE_COUNT_MISSING')
     results['hmac']['cases'] = 5
     guard_log = (out / 'receiptGuard.log').read_text()
     match = re.search(r'Ran (\d+) tests', guard_log)
-    require(match and int(match.group(1)) >= 29 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
+    require(match and int(match.group(1)) >= 35 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
     results['receiptGuard']['cases'] = int(match.group(1))
     for name, filename, expected in [('api', 'community-api-results.json', 4),
                                      ('database', 'database-boundary-results.json', 14),
-                                     ('foundation', 'foundation-results.json', 12)]:
+                                     ('foundation', 'foundation-results.json', 22)]:
         path = ROOT / 'logs' / filename
         require(path.stat().st_mtime >= start, 'STALE_' + name.upper() + '_REPORT')
         body = path.read_bytes()
@@ -275,6 +315,16 @@ def checks(run_id):
         require(count == expected, 'WRONG_' + name.upper() + '_CASE_COUNT')
         (out / filename).write_bytes(body)
         results[name]['cases'] = count
+    control_path = ROOT / 'logs/w03-control-all-results.json'
+    require(control_path.stat().st_mtime >= start, 'STALE_CONTROL_REPORT')
+    control = json.loads(control_path.read_text())
+    require(control.get('passed') is True and control.get('phase') == 'all' and control['head'] == before['head']
+            and control['jarSha256'] == before['jarSha256'] and control['pid'] == before['controlRuntime']['pid'], 'CONTROL_REPORT_IDENTITY_MISMATCH')
+    observed = {case['id'] for case in control['cases'] if case.get('status') == 'passed'}
+    require(len(observed) == len(control['cases']) and len(observed) >= 80 and W03_HTTP_CASES <= observed, 'CONTROL_CASES_MISSING_OR_FAILED')
+    (out / 'w03-control-all-results.json').write_text(json.dumps(control, indent=2))
+    results['control'] = {'passed': True, 'cases': len(observed), 'requiredCases': sorted(W03_HTTP_CASES),
+                          'pid': control['pid'], 'jarSha256': control['jarSha256'], 'head': control['head']}
     for name, switch, marker, property_name in [
             ('missing-services', 'true', 'Enterprise security assembly rejected', 'enterprise.enabled'),
             ('invalid-switch', 'tru', 'enterprise.enabled must be explicitly true or false', 'enterprise.enabled'),
@@ -313,7 +363,7 @@ def verify_gate(head=None):
     remote = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'remote-checks.json').read_text())
     require(remote['identity'] == report['identity'] and remote['checks'] == report['checks'],
             'REMOTE_CHECK_RECEIPT_MISMATCH')
-    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 29), ('foundation', 12)]:
+    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 35), ('foundation', 22), ('control', 80)]:
         item = report['checks'].get(name, {})
         require(item.get('passed') is True and item.get('cases', 0) >= minimum, 'REQUIRED_CHECK_MISSING')
     require(set(report['checks']['unit'].get('schemaRegressions', [])) == SCHEMA_REGRESSIONS,
@@ -328,6 +378,11 @@ def verify_gate(head=None):
             'EVOLUTION_REGRESSION_RECEIPT_MISSING')
     require(set(report['checks']['unit'].get('auditRegressions', [])) == AUDIT_REGRESSIONS,
             'AUDIT_REGRESSION_RECEIPT_MISSING')
+    require(set(report['checks']['unit'].get('w03Regressions', [])) == W03_REGRESSIONS, 'W03_REGRESSION_RECEIPT_MISSING')
+    control = report['checks']['control']
+    require(set(control.get('requiredCases', [])) == W03_HTTP_CASES, 'CONTROL_CASE_RECEIPT_MISSING')
+    require(control.get('head') == report['identity']['head'] and control.get('jarSha256') == report['identity']['jarSha256']
+            and control.get('pid') == report['identity']['controlRuntime']['pid'], 'CONTROL_RECEIPT_IDENTITY_MISMATCH')
     required = {kind + '.' + case for kind in ['desktop', 'mobile']
                 for case in ['initialization', 'wrong-password', 'login', 'reload']}
     browser = report['browser']

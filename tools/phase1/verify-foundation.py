@@ -7,7 +7,7 @@ spec = importlib.util.spec_from_file_location('boundary', Path(__file__).with_na
 boundary = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(boundary)
 ROOT = boundary.ROOT
-TABLES = ['de_ent_user', 'de_ent_tenant', 'de_ent_tenant_member', 'de_ent_org', 'de_ent_audit_event']
+TABLES = ['de_ent_user', 'de_ent_tenant', 'de_ent_tenant_member', 'de_ent_org', 'de_ent_audit_event', 'de_ent_org_member', 'de_ent_role', 'de_ent_role_assignment', 'de_ent_assignment_school', 'de_ent_subject', 'de_ent_admin_grant', 'de_ent_user_credential', 'de_ent_platform_qualification', 'de_ent_login_session', 'de_ent_resource']
 
 
 def main():
@@ -24,16 +24,16 @@ def main():
     check('isolated-port', 'SELECT @@port;', '13306')
     names = ','.join("'" + name + "'" for name in TABLES)
     where = "TABLE_SCHEMA='de_phase1_meta' AND TABLE_NAME IN (" + names + ')'
-    check('tables', "SELECT COUNT(*),SUM(ENGINE<>'InnoDB'),SUM(TABLE_COLLATION<>'utf8mb4_0900_bin'),SUM(TABLE_COMMENT='') FROM information_schema.TABLES WHERE " + where, '5\t0\t0\t0')
-    check('columns', "SELECT COUNT(*),SUM(COLUMN_COMMENT=''),SUM(COLLATION_NAME IS NOT NULL AND COLLATION_NAME<>'utf8mb4_0900_bin') FROM information_schema.COLUMNS WHERE " + where, '56\t0\t0')
-    check('checks', "SELECT COUNT(*),SUM(ENFORCED<>'YES') FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_TYPE='CHECK' AND " + where, '23\t0')
-    check('foreign-keys', "SELECT COUNT(*),SUM(DELETE_RULE<>'RESTRICT' OR UPDATE_RULE<>'RESTRICT' OR UNIQUE_CONSTRAINT_SCHEMA<>'de_phase1_meta') FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='de_phase1_meta' AND TABLE_NAME IN (" + names + ')', '15\t0')
-    check('indexes', "SELECT COUNT(DISTINCT TABLE_NAME,INDEX_NAME) FROM information_schema.STATISTICS WHERE " + where, '28')
-    check('versions', "SELECT version,success+0 FROM de_phase1_meta.de_standalone_version WHERE version IN ('2.40','4.1','4.2') ORDER BY installed_rank;", '2.40\t1\n4.1\t1\n4.2\t1')
+    check('tables', "SELECT COUNT(*),SUM(ENGINE<>'InnoDB'),SUM(TABLE_COLLATION<>'utf8mb4_0900_bin'),SUM(TABLE_COMMENT='') FROM information_schema.TABLES WHERE " + where, '15\t0\t0\t0')
+    check('columns', "SELECT COUNT(*),SUM(COLUMN_COMMENT=''),SUM(COLLATION_NAME IS NOT NULL AND COLLATION_NAME<>'utf8mb4_0900_bin') FROM information_schema.COLUMNS WHERE " + where, '164\t0\t0')
+    check('checks', "SELECT COUNT(*),SUM(ENFORCED<>'YES') FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_TYPE='CHECK' AND " + where, '50\t0')
+    check('foreign-keys', "SELECT COUNT(*),SUM(DELETE_RULE<>'RESTRICT' OR UPDATE_RULE<>'RESTRICT' OR UNIQUE_CONSTRAINT_SCHEMA<>'de_phase1_meta') FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='de_phase1_meta' AND TABLE_NAME IN (" + names + ')', '56\t0')
+    check('indexes', "SELECT COUNT(DISTINCT TABLE_NAME,INDEX_NAME) FROM information_schema.STATISTICS WHERE " + where, '87')
+    check('versions', "SELECT version,success+0 FROM de_phase1_meta.de_standalone_version WHERE version IN ('2.40','4.1','4.2','4.3','4.4','4.5') ORDER BY installed_rank;", '2.40\t1\n4.1\t1\n4.2\t1\n4.3\t1\n4.4\t1\n4.5\t1')
     for table in TABLES:
         check('no-auto-provision-' + table, 'SELECT COUNT(*) FROM de_phase1_meta.' + table, '0')
     (ROOT / 'logs/foundation-results.json').write_text(json.dumps(rows, indent=2))
-    print('Foundation checks: 12 passed; read-only, no credentials printed.')
+    print('Foundation checks: 22 passed; read-only, no credentials printed.')
 
 
 if __name__ == '__main__':

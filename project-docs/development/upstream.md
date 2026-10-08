@@ -41,3 +41,9 @@
 2026-10-08，W03/T02。新增FoundationSchemaV42、EnterpriseAuditSqlBlock及enterprise.audit下的事件／组织适配器；FoundationSchema当前目标包含第五表，FoundationConfiguration按原foundation开关装配正式4.2。冻结V41、InitSqlListener和SDK公共契约本轮不变。没有XPack实现、默认权限Bean或HTTP。
 
 升级复核组4连续版本、历史成功不重跑、当前五表验证、JPA关闭自动DDL和映射边界、组织内核同事务调用。Spring工厂代理和原生工厂不能直接对象比较，审计要求同一工厂事务资源中的实际EntityManager。16个真实命名回归及固定门禁见[审计记录](organization-audit.md)，不扩大公共接口承诺。
+
+## ENT-007：W03控制面与归属公共接点
+
+自研DTO／API位于sdk/api/api-permissions，新实现位于core-backend/enterprise，迁移4.3—4.5与历史冻结契约分开。sdk/common新增ManagementRequestBridge并在社区WhitelistUtils.match检查线程限定精确请求作用域；只有真实管理过滤器完成校验后打开，finally关闭，默认无效，不加入永久公开路径。完整产品既有认证继续通过公共接点协作，没有读取或复制专有XPack实现。
+
+组织内核新增HTTP全配置的不可变归属核对；资格／审计使用Spring所属EntityManager的实际RESOURCE_LOCAL活动事务，覆盖open-in-view复用。原生DataVisualizationInfo仅由新管理资源命令与同ID侧表一起创建，社区业务查询／编辑器不提前放行。设计、测试及贡献影响见[实施记录](w03-control-plane.md)、[架构复核](w03-architecture-review.md)与[验收](w03-acceptance.md)。W03仅向项目任务分支交付，不向官方dev-v3或XPack发布。

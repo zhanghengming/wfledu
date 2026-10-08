@@ -65,7 +65,7 @@ public final class FoundationSchema {
     }
 
     // Current production target. A later version must replace this target without modifying V41.
-    static final List<Table> TABLES = List.copyOf(FoundationSchemaV42.TABLES);
+    static final List<Table> TABLES = List.copyOf(FoundationSchemaV45.TABLES);
 
     public static boolean owns(String table) {
         return TABLES.stream().anyMatch(v -> v.name().equals(table));

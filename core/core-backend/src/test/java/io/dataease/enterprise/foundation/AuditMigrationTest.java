@@ -55,10 +55,10 @@ class AuditMigrationTest {
 
     @Test void formalPlanCreatesFiveEmptyTablesAndRestartsWithoutNewRecords() {
         fixture("auditplan", (jdbc, versions) -> {
-            run(versions); new FoundationSchemaVerifier(jdbc).run(null); run(versions);
+            run(versions); new FoundationSchemaVerifier(jdbc, FoundationSchemaV42.TABLES).run(null); run(versions);
             assertThat(versions.findRecords()).extracting(DeStandaloneVersion::getVersion).containsExactly("4.2", "4.1");
             assertThat(versions.findRecords()).extracting(DeStandaloneVersion::getSuccess).containsOnly(true);
-            for (var table : FoundationSchema.TABLES) assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM `" + table.name() + "`", Long.class)).isZero();
+            for (var table : FoundationSchemaV42.TABLES) assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM `" + table.name() + "`", Long.class)).isZero();
         });
     }
 
@@ -71,7 +71,7 @@ class AuditMigrationTest {
                 new SpringContextUtil().setApplicationContext(old); run(versions);
             } finally { new SpringContextUtil().setApplicationContext(current); }
             jdbc.update("INSERT INTO de_ent_user(id,username,display_name) VALUES(1,'retained','合成保留')");
-            run(versions); new FoundationSchemaVerifier(jdbc).run(null);
+            run(versions); new FoundationSchemaVerifier(jdbc, FoundationSchemaV42.TABLES).run(null);
             assertThat(jdbc.queryForObject("SELECT username FROM de_ent_user WHERE id=1", String.class)).isEqualTo("retained");
             assertThat(versions.findRecords()).hasSize(2);
         });
@@ -93,7 +93,7 @@ class AuditMigrationTest {
                 assertThatThrownBy(() -> run(versions)).hasMessageContaining("4.2");
             } finally { new SpringContextUtil().setApplicationContext(current); }
             FoundationSchema.verify(jdbc, FoundationSchemaV42.AUDIT);
-            run(versions); run(versions); new FoundationSchemaVerifier(jdbc).run(null);
+            run(versions); run(versions); new FoundationSchemaVerifier(jdbc, FoundationSchemaV42.TABLES).run(null);
             assertThat(versions.findRecords()).extracting(DeStandaloneVersion::getVersion).containsExactly("4.2", "4.2", "4.1");
             assertThat(versions.findRecords()).extracting(DeStandaloneVersion::getSuccess).containsExactly(true, false, true);
         });

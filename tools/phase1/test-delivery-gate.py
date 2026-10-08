@@ -17,16 +17,18 @@ class DeliveryGateTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.identity = {'head': 'synthetic-head', 'jarSha256': 'synthetic-jar'}
+        self.identity = {'head': 'synthetic-head', 'jarSha256': 'synthetic-jar', 'controlRuntime': {'pid': 123}}
         self.run = '12345678-1234-1234-1234-123456789abc'
         checks = {name: {'passed': True, 'cases': count} for name, count in
-                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 29), ('foundation', 12)]}
+                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 35), ('foundation', 22), ('control', 80)]}
         checks['unit']['schemaRegressions'] = sorted(gate.SCHEMA_REGRESSIONS)
         checks['unit']['jpaRegressions'] = sorted(gate.JPA_REGRESSIONS)
         checks['unit']['mappingRegressions'] = sorted(gate.MAPPING_REGRESSIONS)
         checks['unit']['organizationRegressions'] = sorted(gate.ORGANIZATION_REGRESSIONS)
         checks['unit']['evolutionRegressions'] = sorted(gate.EVOLUTION_REGRESSIONS)
         checks['unit']['auditRegressions'] = sorted(gate.AUDIT_REGRESSIONS)
+        checks['unit']['w03Regressions'] = sorted(gate.W03_REGRESSIONS)
+        checks['control'].update(requiredCases=sorted(gate.W03_HTTP_CASES), pid=123, jarSha256='synthetic-jar', head='synthetic-head')
         cases = [{'id': kind + '.' + action, 'status': 'passed'}
                  for kind in ['desktop', 'mobile']
                  for action in ['initialization', 'wrong-password', 'login', 'reload']]
@@ -60,6 +62,16 @@ class DeliveryGateTest(unittest.TestCase):
 
     def test_complete_current_receipt_accepted(self):
         self.assertTrue(self.verify(self.report)['passed'])
+
+    def test_database_capacity_requires_isolated_port_and_parallel_headroom(self):
+        self.assertEqual(12, gate.validate_database_capacity(13306, 80, 68)['minimumHeadroom'])
+        for port, limit, connected, error in [(3306, 80, 39, 'WRONG_CAPACITY_DATABASE'),
+                                              (13306, 40, 39, 'INSUFFICIENT_DATABASE_HEADROOM'),
+                                              (13306, 80, -1, 'INSUFFICIENT_DATABASE_HEADROOM'),
+                                              (13306, 80, 81, 'INSUFFICIENT_DATABASE_HEADROOM')]:
+            with self.subTest(port=port, limit=limit, connected=connected):
+                with self.assertRaisesRegex(RuntimeError, error):
+                    gate.validate_database_capacity(port, limit, connected)
 
     def test_missing_mobile_cases_rejected(self):
         self.rejected(lambda report: report['browser'].update(cases=report['browser']['cases'][:4]),
@@ -245,6 +257,37 @@ class DeliveryGateTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'AUDIT_REGRESSION_RECEIPT_MISSING'):
             self.verify(report)
 
+
+    def test_previous_120_tests_cannot_pass_completed_w03(self):
+        report = copy.deepcopy(self.report)
+        report['checks']['unit']['cases'] = 120
+        remote = self.root / 'logs' / ('delivery-' + self.run) / 'remote-checks.json'
+        remote.write_text(json.dumps({'identity': self.identity, 'checks': report['checks']}))
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'): self.verify(report)
+
+    def test_control_cannot_be_omitted_even_with_all_unit_tests(self):
+        report = copy.deepcopy(self.report); report['checks'].pop('control')
+        remote = self.root / 'logs' / ('delivery-' + self.run) / 'remote-checks.json'
+        remote.write_text(json.dumps({'identity': self.identity, 'checks': report['checks']}))
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'): self.verify(report)
+
+    def test_missing_control_case_cannot_be_replaced_by_high_count(self):
+        report = copy.deepcopy(self.report); report['checks']['control']['requiredCases'].pop()
+        remote = self.root / 'logs' / ('delivery-' + self.run) / 'remote-checks.json'
+        remote.write_text(json.dumps({'identity': self.identity, 'checks': report['checks']}))
+        with self.assertRaisesRegex(RuntimeError, 'CONTROL_CASE_RECEIPT_MISSING'): self.verify(report)
+
+    def test_old_control_process_cannot_count_as_current(self):
+        report = copy.deepcopy(self.report); report['checks']['control']['pid'] = 1
+        remote = self.root / 'logs' / ('delivery-' + self.run) / 'remote-checks.json'
+        remote.write_text(json.dumps({'identity': self.identity, 'checks': report['checks']}))
+        with self.assertRaisesRegex(RuntimeError, 'CONTROL_RECEIPT_IDENTITY_MISMATCH'): self.verify(report)
+
+    def test_high_unit_count_cannot_replace_required_http_methods(self):
+        doc = ET.Element('testsuite', tests='12', failures='0', errors='0', skipped='0')
+        for i in range(12): ET.SubElement(doc, 'testcase', name='unrelated_' + str(i))
+        with self.assertRaisesRegex(RuntimeError, 'W03_REGRESSION_CASES_MISSING'):
+            gate.validate_unit_suite(doc, 'ManagementHttpBoundaryTest')
 
 if __name__ == '__main__':
     unittest.main()
