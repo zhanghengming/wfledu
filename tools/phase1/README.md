@@ -56,3 +56,7 @@ node tools/phase1/login-startup-regression.cjs
 ## W03基础迁移
 
 [verify-foundation.py](verify-foundation.py)只读验证任务元库4表/43列、13FK、17CHECK、注释/排序规则、2.40+4.1成功及空表。Java真实MySQL测试在远程enterprise-tests Profile运行，使用runtime/conf/w03-client.cnf最小权限账号及固定任务RSA公开密钥；新de_phase1_w03_*合成库保留，不删除数据。正式门禁要求39项Java、11项回执、10项元数据，见[设计](../../project-docs/development/foundation-migration.md)。
+
+## 当前门槛：正式组织审计
+
+2026-10-08，上文39项Java／11项回执／10项基础检查为4.1单元历史；当前Java120、回执自检29、基础结构12，原结构／隔离／映射／组织／演进名称保持，新增16个AUDIT_REGRESSIONS精确名称及auditRegressions字段。任务元库目标五表56列、15FK、23CHECK、28索引及2.40＋4.1＋正式4.2成功，五表空数据；浏览器8及3类故障控制继续必需。见[最新审计单元](../../project-docs/development/organization-audit.md)及[测试规范](../../project-docs/development/testing.md)，仅足数、旧回执或缺新字段不可放行。

@@ -35,3 +35,9 @@
 ## ENT-008：历史版本、当前目标及组4历史预检
 
 2026-10-08，W03/T02。InitSqlListener在任何组执行前增加组4连续计划／完整历史只读预检，组4最新版本使用准确命名空间，增加企业rank耗尽拒绝；其他组原行为和SDK Version保持。新增EnterpriseMigrationHistory和FoundationSchemaV41，4.1原DDL指纹不变；FoundationSchema只维护当前目标及通用比较，FoundationSchemaVerifier脱离历史SqlBlock并检查完整保留表清单，FoundationConfiguration沿原条件装配。升级复核版本Repository排序／rank、监听器顺序、MySQL元信息、冻结声明与当前目标同步。没有新增公共API、SDK依赖、正式4.2、默认身份或XPack实现。12个真实／纯规则演进方法进入固定门禁，详见[实现和限制](schema-version-evolution.md)。
+
+## ENT-009：正式4.2审计与组织同事务追加
+
+2026-10-08，W03/T02。新增FoundationSchemaV42、EnterpriseAuditSqlBlock及enterprise.audit下的事件／组织适配器；FoundationSchema当前目标包含第五表，FoundationConfiguration按原foundation开关装配正式4.2。冻结V41、InitSqlListener和SDK公共契约本轮不变。没有XPack实现、默认权限Bean或HTTP。
+
+升级复核组4连续版本、历史成功不重跑、当前五表验证、JPA关闭自动DDL和映射边界、组织内核同事务调用。Spring工厂代理和原生工厂不能直接对象比较，审计要求同一工厂事务资源中的实际EntityManager。16个真实命名回归及固定门禁见[审计记录](organization-audit.md)，不扩大公共接口承诺。

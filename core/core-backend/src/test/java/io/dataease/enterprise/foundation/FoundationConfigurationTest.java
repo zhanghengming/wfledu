@@ -15,7 +15,10 @@ class FoundationConfigurationTest {
 
     @Test
     void disabledByDefaultDoesNotTouchDatabase() {
-        runner.run(context -> assertThat(context).doesNotHaveBean(EnterpriseFoundationSqlBlock.class));
+        runner.run(context -> {
+            assertThat(context).doesNotHaveBean(EnterpriseFoundationSqlBlock.class);
+            assertThat(context).doesNotHaveBean(EnterpriseAuditSqlBlock.class);
+        });
         assertThat(org.mockito.Mockito.mockingDetails(jdbc).getInvocations())
                 .allMatch(call -> call.getMethod().getName().equals("afterPropertiesSet"));
     }
@@ -23,7 +26,10 @@ class FoundationConfigurationTest {
     @Test
     void explicitFalseDoesNotTouchDatabase() {
         runner.withPropertyValues("enterprise.foundation.enabled=false")
-                .run(context -> assertThat(context).doesNotHaveBean(EnterpriseFoundationSqlBlock.class));
+                .run(context -> {
+                    assertThat(context).doesNotHaveBean(EnterpriseFoundationSqlBlock.class);
+                    assertThat(context).doesNotHaveBean(EnterpriseAuditSqlBlock.class);
+                });
         assertThat(org.mockito.Mockito.mockingDetails(jdbc).getInvocations())
                 .allMatch(call -> call.getMethod().getName().equals("afterPropertiesSet"));
     }
@@ -32,6 +38,8 @@ class FoundationConfigurationTest {
     void explicitTrueRegistersIndependentMigrationOnly() {
         runner.withPropertyValues("enterprise.foundation.enabled=true").run(context -> {
             assertThat(context).hasSingleBean(EnterpriseFoundationSqlBlock.class);
+            assertThat(context).hasSingleBean(EnterpriseAuditSqlBlock.class);
+            assertThat(context.getBean(EnterpriseAuditSqlBlock.class).getVersion().getVersion()).isEqualTo("4.2");
             assertThat(context).hasSingleBean(FoundationSchemaVerifier.class);
             assertThat(context.getBean(FoundationSchemaVerifier.class).getOrder()).isGreaterThan(1);
             assertThat(context.getBean(EnterpriseFoundationSqlBlock.class).getVersionGroup()).isEqualTo("4");

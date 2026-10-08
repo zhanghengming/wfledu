@@ -30,4 +30,10 @@ public class FoundationConfiguration {
     EnterpriseFoundationSqlBlock enterpriseFoundationSqlBlock(JdbcTemplate jdbc) {
         return new EnterpriseFoundationSqlBlock(jdbc);
     }
+
+    @Bean
+    @ConditionalOnProperty(name = "enterprise.foundation.enabled", havingValue = "true")
+    EnterpriseAuditSqlBlock enterpriseAuditSqlBlock(JdbcTemplate jdbc) {
+        return new EnterpriseAuditSqlBlock(jdbc);
+    }
 }

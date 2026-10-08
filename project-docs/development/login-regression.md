@@ -77,3 +77,7 @@ W03扩展见[基础迁移设计](foundation-migration.md)；缺foundation的旧W
 ## W03 迁移演进门禁更新
 
 2026-10-08，当前Java最低104、回执自检26，新增12个EVOLUTION_REGRESSIONS必需名字及evolutionRegressions字段；上节92/23为组织单元历史。旧回执、仅足数或缺新字段均拒绝，原结构／隔离／映射／组织名称及完整包／源码／工具／进程绑定保持。执行入口不变，见[迁移演进记录](schema-version-evolution.md)与[测试规范](testing.md)。社区浏览器回归仍8项及3类故障控制，不把合成升级扩展解释为企业业务验收。
+
+## W03 正式审计门禁更新
+
+2026-10-08，当前门槛Java120、回执自检29、基础结构12，新增16个AUDIT_REGRESSIONS必需名称及auditRegressions字段；上文104/26为上一单元历史。五表56列／15外键／23强制CHECK／28索引，任务版本记录同时要求4.1与正式4.2成功，五表无默认身份或组织行。社区浏览器8和故障控制3类不变，源码／工具／JAR／进程／HEAD绑定保持。执行[固定清单](testing.md)，每次提交变动后重新生成有效回执；见[正式审计](organization-audit.md)。

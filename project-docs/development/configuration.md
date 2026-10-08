@@ -37,3 +37,7 @@ enterprise.foundation.enabled默认false，只接受精确true/false。显式tru
 ## 迁移演进装配边界
 
 2026-10-08，[迁移演进](schema-version-evolution.md)不新增配置开关。FoundationSchemaVerifier使用JdbcTemplate与编译期当前目标，脱离历史SqlBlock；内部测试快照构造器不是可配置生产Bean或默认允许适配器。enterprise.foundation.enabled默认false及原严格开关验证保持；开启仍不等于enterprise.enabled或企业请求就绪。生产4.2未注册，正式资格／审计／身份依赖仍待。
+
+## 正式审计装配边界
+
+2026-10-08，foundation原开关条件注册4.1、正式4.2与当前五表验证器；默认关闭无新增DDL交互。开启仍不等于enterprise.enabled或企业请求就绪。审计适配器不注册默认Bean，必须显式传入实际工厂与可信Trace来源；组织管理资格、可信身份及HTTP就绪继续待实现。没有新配置键、默认身份或临时管理员位。见[正式审计](organization-audit.md)。

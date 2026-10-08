@@ -28,7 +28,26 @@ UNIT_SUITES = {'EnterpriseAssemblyGuardTest': 12, 'AccessContextHolderTest': 10,
                'FoundationConfigurationTest': 6, 'FoundationMigrationTest': 18,
                'EnterpriseJpaIsolationTest': 14, 'FoundationJpaMappingTest': 12,
                'OrganizationHierarchyTest': 8, 'OrganizationTransactionTest': 12,
-               'EnterpriseMigrationEvolutionTest': 12}
+               'EnterpriseMigrationEvolutionTest': 12, 'AuditMigrationTest': 8, 'OrganizationAuditTest': 8}
+AUDIT_REGRESSIONS = {'AuditMigrationTest.' + name for name in [
+    'formalPlanCreatesFiveEmptyTablesAndRestartsWithoutNewRecords',
+    'formalUpgradePreservesV41RowsAndDoesNotReexecuteSuccessfulMigration',
+    'committedAuditDdlFailureRetriesAndRetainsFailureRecord',
+    'existingAuditDriftFailsWithoutRepairOrChangingRows',
+    'nullableScopeAndActorBranchesRejectIncompleteRows',
+    'jsonMustBeObjectAndWithinBoundedStorage',
+    'auditForeignKeysRejectUnknownTenantAndActor',
+    'dictionaryShapeHasThirteenColumnsTwoForeignKeysAndImmutableChecks'
+]} | {'OrganizationAuditTest.' + name for name in [
+    'organizationCreateAndUpdateCommitWithFormalAudit',
+    'auditFailureAfterInsertRollsBackCreateAndEpoch',
+    'auditFailureAfterInsertRollsBackUpdateAndEpoch',
+    'invalidTraceAndOperationCannotLeaveAuditOrOrganization',
+    'forgedChangeScopeActorAndEpochRejects',
+    'missingContextUnboundTransactionAndWrongFactoryReject',
+    'twoGroupsKeepTheirOrganizationAuditSeparated',
+    'mappingIsImmutableAndRemovalIsRejected'
+]}
 EVOLUTION_REGRESSIONS = {'EnterpriseMigrationEvolutionTest.' + name for name in [
     'prefixSimilarVersionGroupCannotSuppressFoundationMigration',
     'unsupportedNewerHistoryRejectsBeforeDdlVersionWritesAndCommunityBlocks',
@@ -131,6 +150,8 @@ def validate_unit_suite(doc, name):
     require(expected_organization <= observed, 'ORGANIZATION_REGRESSION_CASES_MISSING')
     expected_evolution = {case for case in EVOLUTION_REGRESSIONS if case.startswith(name + '.')}
     require(expected_evolution <= observed, 'EVOLUTION_REGRESSION_CASES_MISSING')
+    expected_audit = {case for case in AUDIT_REGRESSIONS if case.startswith(name + '.')}
+    require(expected_audit <= observed, 'AUDIT_REGRESSION_CASES_MISSING')
     return count
 
 
@@ -234,16 +255,17 @@ def checks(run_id):
     results['unit']['mappingRegressions'] = sorted(MAPPING_REGRESSIONS)
     results['unit']['organizationRegressions'] = sorted(ORGANIZATION_REGRESSIONS)
     results['unit']['evolutionRegressions'] = sorted(EVOLUTION_REGRESSIONS)
+    results['unit']['auditRegressions'] = sorted(AUDIT_REGRESSIONS)
     hmac_log = (out / 'hmac.log').read_text()
     require('5 passed' in hmac_log, 'HMAC_CASE_COUNT_MISSING')
     results['hmac']['cases'] = 5
     guard_log = (out / 'receiptGuard.log').read_text()
     match = re.search(r'Ran (\d+) tests', guard_log)
-    require(match and int(match.group(1)) >= 26 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
+    require(match and int(match.group(1)) >= 29 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
     results['receiptGuard']['cases'] = int(match.group(1))
     for name, filename, expected in [('api', 'community-api-results.json', 4),
                                      ('database', 'database-boundary-results.json', 14),
-                                     ('foundation', 'foundation-results.json', 10)]:
+                                     ('foundation', 'foundation-results.json', 12)]:
         path = ROOT / 'logs' / filename
         require(path.stat().st_mtime >= start, 'STALE_' + name.upper() + '_REPORT')
         body = path.read_bytes()
@@ -291,7 +313,7 @@ def verify_gate(head=None):
     remote = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'remote-checks.json').read_text())
     require(remote['identity'] == report['identity'] and remote['checks'] == report['checks'],
             'REMOTE_CHECK_RECEIPT_MISMATCH')
-    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 26), ('foundation', 10)]:
+    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 29), ('foundation', 12)]:
         item = report['checks'].get(name, {})
         require(item.get('passed') is True and item.get('cases', 0) >= minimum, 'REQUIRED_CHECK_MISSING')
     require(set(report['checks']['unit'].get('schemaRegressions', [])) == SCHEMA_REGRESSIONS,
@@ -304,6 +326,8 @@ def verify_gate(head=None):
             'ORGANIZATION_REGRESSION_RECEIPT_MISSING')
     require(set(report['checks']['unit'].get('evolutionRegressions', [])) == EVOLUTION_REGRESSIONS,
             'EVOLUTION_REGRESSION_RECEIPT_MISSING')
+    require(set(report['checks']['unit'].get('auditRegressions', [])) == AUDIT_REGRESSIONS,
+            'AUDIT_REGRESSION_RECEIPT_MISSING')
     required = {kind + '.' + case for kind in ['desktop', 'mobile']
                 for case in ['initialization', 'wrong-password', 'login', 'reload']}
     browser = report['browser']
