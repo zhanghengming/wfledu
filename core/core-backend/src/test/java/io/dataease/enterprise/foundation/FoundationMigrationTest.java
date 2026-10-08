@@ -308,6 +308,22 @@ class FoundationMigrationTest {
         }
     }
 
+    @Test
+    void checkLiteralContentsCannotBeNormalizedIntoAnotherStatus() {
+        for (String literal : List.of("ACT_utf8mb4IVE", "ACT`IVE")) {
+            JdbcTemplate jdbc = migrated("checkliteral");
+            principals(jdbc);
+            jdbc.execute("ALTER TABLE de_ent_user DROP CHECK ck_user_status, ADD CONSTRAINT ck_user_status CHECK (status IN ('DISABLED','" + literal + "')) ENFORCED");
+            assertThat(jdbc.queryForObject("SELECT CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND CONSTRAINT_NAME='ck_user_status'", String.class)).contains(literal);
+            assertThatThrownBy(() -> jdbc.update("UPDATE de_ent_user SET status='ACTIVE' WHERE id=1"))
+                    .isInstanceOf(org.springframework.dao.DataAccessException.class).satisfies(FoundationMigrationTest::integrityFailure);
+            assertThatThrownBy(() -> new FoundationSchemaVerifier(new EnterpriseFoundationSqlBlock(jdbc)).run(null))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("schema mismatch");
+            assertThat(jdbc.queryForObject("SELECT CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND CONSTRAINT_NAME='ck_user_status'", String.class)).contains(literal);
+            assertThat(jdbc.queryForObject("SELECT status FROM de_ent_user WHERE id=1", String.class)).isEqualTo("DISABLED");
+        }
+    }
+
     private static void integrityFailure(Throwable error) {
         Throwable root = ((org.springframework.dao.DataAccessException) error).getRootCause();
         assertThat(root).isInstanceOf(java.sql.SQLException.class);

@@ -17,4 +17,4 @@
 
 `de-xpack` 不参与自研实现与公开提交。涉及 SDK 契约变更时，核对社区替补实现、现有 XPack API 契约及前端调用，但不访问或复制专有实现。
 
-2026-10-08补充ENT-004：FoundationSchema修复字符串默认值和索引字段校验；未改4.1 DDL、InitSqlListener或SDK/API。45项Java、完整包与正式门禁及原因分析见[整改记录](schema-validation-review.md)，后续版本/JPA/就绪设计见[ADR-015](../adr/015-schema-validation-and-startup.md)。
+2026-10-08补充ENT-004：FoundationSchema修复字符串默认值、索引字段和CHECK字面量校验；未改4.1 DDL、InitSqlListener或SDK/API。最终必需46项Java、完整包与正式门禁及原因分析见[整改记录](schema-validation-review.md)，后续版本/JPA/就绪设计见[ADR-015](../adr/015-schema-validation-and-startup.md)。

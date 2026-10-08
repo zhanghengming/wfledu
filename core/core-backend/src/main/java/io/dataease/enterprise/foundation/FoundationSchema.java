@@ -217,9 +217,10 @@ public final class FoundationSchema {
     // MySQL adds literal charset introducers, operator/function casing and outer brackets.
     // Preserve inner brackets: changing AND/OR grouping must fail validation.
     static String normalizeCheck(String value) {
-        String[] segments = value.replace("_utf8mb4", "").replace("\\'", "'").replace("`", "").split("'", -1);
+        String[] segments = value.replace("\\'", "'").split("'", -1);
         for (int i = 0; i < segments.length; i += 2) {
-            segments[i] = segments[i].replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
+            segments[i] = segments[i].replace("_utf8mb4", "").replace("`", "")
+                    .replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
         }
         String result = String.join("'", segments);
         while (result.startsWith("(") && result.endsWith(")") && wrapsWholeExpression(result)) {

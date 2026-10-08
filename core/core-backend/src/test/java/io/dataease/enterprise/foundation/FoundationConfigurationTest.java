@@ -72,5 +72,11 @@ class FoundationConfigurationTest {
                 .isNotEqualTo(FoundationSchema.normalizeCheck("((a AND b) OR c)"));
         assertThat(FoundationSchema.normalizeCheck("status='ACTIVE'"))
                 .isNotEqualTo(FoundationSchema.normalizeCheck("status='active'"));
+        assertThat(FoundationSchema.normalizeCheck("status='ACTIVE'"))
+                .isNotEqualTo(FoundationSchema.normalizeCheck("status='ACT_utf8mb4IVE'"));
+        assertThat(FoundationSchema.normalizeCheck("status='ACTIVE'"))
+                .isNotEqualTo(FoundationSchema.normalizeCheck("status='ACT`IVE'"));
+        assertThat(FoundationSchema.normalizeCheck("`status` = _utf8mb4'ACTIVE'"))
+                .isEqualTo(FoundationSchema.normalizeCheck("status='ACTIVE'"));
     }
 }

@@ -25,14 +25,16 @@ TOOL_NAMES = ['login-test-context.py', 'browser-login-regression.cjs',
 
 
 UNIT_SUITES = {'EnterpriseAssemblyGuardTest': 12, 'AccessContextHolderTest': 10,
-               'FoundationConfigurationTest': 6, 'FoundationMigrationTest': 17}
+               'FoundationConfigurationTest': 6, 'FoundationMigrationTest': 18}
 SCHEMA_REGRESSIONS = {
     'FoundationConfigurationTest.defaultsPreserveLiteralContentsAndOnlyNormalizeKnownFunctionCase',
     'FoundationMigrationTest.literalDefaultCaseDriftFailsBeforeCreatingOtherTables',
     'FoundationMigrationTest.startupVerifierRejectsLiteralDefaultCaseDriftInEveryTable',
     'FoundationMigrationTest.prefixIndexDriftFailsBeforeCreatingOtherTables',
     'FoundationMigrationTest.startupVerifierRejectsPrefixUniqueSchoolCodeIndexWithoutRepair',
-    'FoundationMigrationTest.startupVerifierRejectsDescendingOrAdditionalFunctionalIndexParts'
+    'FoundationMigrationTest.startupVerifierRejectsDescendingOrAdditionalFunctionalIndexParts',
+    'FoundationConfigurationTest.checkNormalizerPreservesGroupingAndLiteralCase',
+    'FoundationMigrationTest.checkLiteralContentsCannotBeNormalizedIntoAnotherStatus'
 }
 
 
@@ -207,7 +209,7 @@ def verify_gate(head=None):
     remote = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'remote-checks.json').read_text())
     require(remote['identity'] == report['identity'] and remote['checks'] == report['checks'],
             'REMOTE_CHECK_RECEIPT_MISMATCH')
-    for name, minimum in [('unit', 45), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 14), ('foundation', 10)]:
+    for name, minimum in [('unit', 46), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 14), ('foundation', 10)]:
         item = report['checks'].get(name, {})
         require(item.get('passed') is True and item.get('cases', 0) >= minimum, 'REQUIRED_CHECK_MISSING')
     require(set(report['checks']['unit'].get('schemaRegressions', [])) == SCHEMA_REGRESSIONS,
