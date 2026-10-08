@@ -20,3 +20,7 @@
 ## W03基础表迁移开关
 
 enterprise.foundation.enabled默认false，只接受精确true/false。显式true仅启用组4/4.1基础表迁移及每次启动只读结构校验，详见[迁移设计](foundation-migration.md)；不能代替enterprise.enabled、安全装配、集团开通或身份授权。当前任务18100进程显式true，企业模式仍false。新JPA实体尚未注册，后续须解决自动DDL隔离，不能只依赖ddl-auto:update。
+
+## 企业JPA结构所有权配置
+
+2026-10-08实现设计见[企业JPA隔离](enterprise-jpa-isolation.md)。过滤在社区/企业模式均注册，不提供关闭它的业务开关；企业映射要求enterprise.foundation.enabled=true。现有schema_filter_provider或integrator_provider配置冲突明确拒绝，不静默覆盖；其他自定义器不得覆盖该契约。独立EntityManagerFactory不会自动继承本配置，新增持久化单元前需独立验证。不新增YAML默认值或真实身份。

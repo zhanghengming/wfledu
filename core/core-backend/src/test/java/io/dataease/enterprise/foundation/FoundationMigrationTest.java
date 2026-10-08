@@ -52,7 +52,7 @@ class FoundationMigrationTest {
                 "jdbc:mariadb://127.0.0.1:13306/" + database + "?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&serverRsaPublicKeyFile=/home/data_dev_zhm/dataease-phase1-test/w02-security/runtime/mysql/data/public_key.pem", user, password));
     }
 
-    private static JdbcTemplate fresh(String scenario) {
+    static JdbcTemplate fresh(String scenario) {
         String database = "de_phase1_w03_" + scenario + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         if (!database.matches("de_phase1_w03_[a-z]+_[a-f0-9]{12}")) throw new IllegalStateException("Unsafe test database");
         connect("").execute("CREATE DATABASE `" + database + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin");
@@ -63,7 +63,7 @@ class FoundationMigrationTest {
         return jdbc;
     }
 
-    private static JdbcTemplate migrated(String scenario) {
+    static JdbcTemplate migrated(String scenario) {
         JdbcTemplate jdbc = fresh(scenario);
         new EnterpriseFoundationSqlBlock(jdbc).execute();
         return jdbc;

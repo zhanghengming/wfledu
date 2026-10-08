@@ -18,3 +18,7 @@
 `de-xpack` 不参与自研实现与公开提交。涉及 SDK 契约变更时，核对社区替补实现、现有 XPack API 契约及前端调用，但不访问或复制专有实现。
 
 2026-10-08补充ENT-004：FoundationSchema修复字符串默认值、索引字段和CHECK字面量校验；未改4.1 DDL、InitSqlListener或SDK/API。最终必需46项Java、完整包与正式门禁及原因分析见[整改记录](schema-validation-review.md)，后续版本/JPA/就绪设计见[ADR-015](../adr/015-schema-validation-and-startup.md)。
+
+## ENT-005：企业JPA结构所有权
+
+2026-10-08，W03/T02。新增EnterpriseJpaConfiguration、EnterpriseSchemaFilterProvider和EnterpriseMappingGuard，沿Boot/Hibernate公开扩展隔离de_ent_保留结构；不修改社区实体、JpaUpdateNonNullAspect、InitSqlListener、SDK/API或历史4.1 DDL。未知provider组合拒绝，升级时复核SPI、初始化顺序及配置覆盖。真实Boot/MySQL验证和限制见[本轮记录](enterprise-jpa-isolation.md)，新增14项Java进入正式命名门禁。

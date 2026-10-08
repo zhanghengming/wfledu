@@ -1,6 +1,6 @@
 # ADR-015：精确结构校验、迁移版本与启动就绪
 
-2026-10-08。状态：本轮采用结构校验及测试整改；版本演进、JPA 自动 DDL 隔离和企业请求就绪控制作为后续 W03 的设计门槛，尚未实现。用户要求修复校验遗留并优化后续架构；不变更 PRD v1.2、R/A/V/P 编号或首期边界。
+2026-10-08。状态：本轮采用结构校验及测试整改；JPA 自动 DDL 隔离已在本轮W03单元实现与整合验证，详见末尾更新；版本演进和企业请求就绪控制仍待实施。用户要求修复校验遗留并优化后续架构；不变更 PRD v1.2、R/A/V/P 编号或首期边界。
 
 ## 问题与替代范围
 
@@ -39,3 +39,7 @@ MySQL COLUMN_DEFAULT 对显式 DEFAULT NULL 和未声明默认均返回 NULL，�
 - 独立评审由用户或团队记录；开发者自评不代替另一位评审者，不以本决策自行合入或开放企业服务。
 
 原因分析、修复和实测证据见[校验整改记录](../development/schema-validation-review.md)；实现边界仍见[基础迁移](../development/foundation-migration.md)。
+
+## JPA隔离落地更新
+
+2026-10-08启动上述第2项独立开发单元，采用HibernatePropertiesCustomizer、SchemaFilterProvider及映射Integrator，设计/实现/实测主出处为[企业JPA隔离记录](../development/enterprise-jpa-isolation.md)。60项Java、17项回执检查及完整包/8项浏览器门禁已通过，最终提交对应回执按该记录和Git核对。版本分离和请求就绪控制仍待实施，原决策理由保留。

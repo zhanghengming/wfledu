@@ -52,3 +52,7 @@ flowchart LR
 ## 交付环境
 
 首期生产目标为 Linux x86_64、MySQL 8、Redis、Docker Compose；外部 HTTPS 入口和密钥管理由部署环境提供。本地开发模板只启动基础服务，见 [部署架构](deployment.md)。多节点、对象存储和独立租户实例预留接口，首期不作为已交付能力。
+
+## 企业JPA结构所有权进展
+
+2026-10-08按[ADR-015](../adr/015-schema-validation-and-startup.md)实现公开扩展过滤与映射启动检查，具体能力、真实Boot/MySQL证据及限制统一见[实施记录](../development/enterprise-jpa-isolation.md)。过滤与精确结构验证分别负责禁止自动DDL和验收正式目标，不替代权限或请求就绪。历史版本/当前目标分离及企业请求门禁仍在对应后续单元实施。
