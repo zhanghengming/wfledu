@@ -16,3 +16,5 @@
 | ENT-004（W03/T02基础迁移） | InitSqlListener追加组4；新增enterprise/foundation及测试 | 4.1自研四表、显式开关、安全重试和每次启动漂移拒绝 | 沿公开SqlBlock，不引入Flyway，不改已执行版本，不注册JPA实体或HTTP接口 | 中：保留组4独占，复核监听器顺序、版本记录和MySQL元信息；多节点未验证 | FoundationConfigurationTest、FoundationMigrationTest、verify-foundation及完整应用；见[设计与验证](foundation-migration.md) | 本项目 |
 
 `de-xpack` 不参与自研实现与公开提交。涉及 SDK 契约变更时，核对社区替补实现、现有 XPack API 契约及前端调用，但不访问或复制专有实现。
+
+2026-10-08补充ENT-004：FoundationSchema修复字符串默认值和索引字段校验；未改4.1 DDL、InitSqlListener或SDK/API。45项Java、完整包与正式门禁及原因分析见[整改记录](schema-validation-review.md)，后续版本/JPA/就绪设计见[ADR-015](../adr/015-schema-validation-and-startup.md)。

@@ -50,6 +50,23 @@ class FoundationConfigurationTest {
     }
 
     @Test
+    void defaultsPreserveLiteralContentsAndOnlyNormalizeKnownFunctionCase() {
+        var literal = FoundationSchema.c("status", "varchar(16)", false, "'DISABLED'", "状态");
+        assertThat(FoundationSchema.defaultMatches(literal, "DISABLED")).isTrue();
+        assertThat(FoundationSchema.defaultMatches(literal, "disabled")).isFalse();
+        assertThat(FoundationSchema.defaultMatches(literal, "DISABLED ")).isFalse();
+        assertThat(FoundationSchema.defaultMatches(literal, null)).isFalse();
+        assertThat(FoundationSchema.defaultMatches(FoundationSchema.c("label", "varchar(64)", false, "'O''Brien'", "名称"), "O'Brien")).isTrue();
+        assertThat(FoundationSchema.defaultMatches(FoundationSchema.c("label", "varchar(64)", false, "'CURRENT_TIMESTAMP(6)'", "名称"), "current_timestamp(6)")).isFalse();
+        assertThat(FoundationSchema.defaultMatches(FoundationSchema.c("created_at", "datetime(6)", false, "CURRENT_TIMESTAMP(6)", "创建时间"), "current_timestamp(6)")).isTrue();
+        assertThat(FoundationSchema.defaultMatches(FoundationSchema.c("created_at", "datetime(6)", false, "CURRENT_TIMESTAMP(6)", "创建时间"), "current_timestamp(3)")).isFalse();
+        assertThat(FoundationSchema.defaultMatches(FoundationSchema.c("version", "bigint", false, "1", "版本"), "1")).isTrue();
+        var noDefault = FoundationSchema.c("id", "bigint", false, null, "主键");
+        assertThat(FoundationSchema.defaultMatches(noDefault, null)).isTrue();
+        assertThat(FoundationSchema.defaultMatches(noDefault, "null")).isFalse();
+    }
+
+    @Test
     void checkNormalizerPreservesGroupingAndLiteralCase() {
         assertThat(FoundationSchema.normalizeCheck("(a AND (b OR c))"))
                 .isNotEqualTo(FoundationSchema.normalizeCheck("((a AND b) OR c)"));

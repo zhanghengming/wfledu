@@ -43,6 +43,12 @@ flowchart LR
 
 现有图表关键入口：`ChartDataApi` → `ChartDataServer` → `ChartDataManage` → `PermissionManage` → Provider。当前 `PermissionManage` 的行列权限 API 可选注入；必须在 POC 中消除“能力缺失即放行”的路径。
 
+## 企业启动与契约校验
+
+[ADR-015](../adr/015-schema-validation-and-startup.md)补充启动设计：历史版本迁移、当前结构验证、JPA映射及业务请求就绪各自承担职责。只有迁移、结构验证和受控初始化成功后企业请求才可进入；就绪探针不能代替后端实际拒绝。版本分离、JPA自动DDL隔离和请求门禁尚待W03实现，不把当前监听端口当作企业就绪。
+
+本轮已修复默认值精确比较及索引逐字段校验，证据见[整改记录](../development/schema-validation-review.md)。后续安全设计均列出信息保留/允许规范化的属性表及独立拒绝证据；不由测试数量推断权限、编辑或嵌入完整实现。
+
 ## 交付环境
 
 首期生产目标为 Linux x86_64、MySQL 8、Redis、Docker Compose；外部 HTTPS 入口和密钥管理由部署环境提供。本地开发模板只启动基础服务，见 [部署架构](deployment.md)。多节点、对象存储和独立租户实例预留接口，首期不作为已交付能力。

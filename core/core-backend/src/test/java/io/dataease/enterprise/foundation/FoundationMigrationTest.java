@@ -241,6 +241,73 @@ class FoundationMigrationTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM de_standalone_version", Integer.class)).isEqualTo(2);
     }
 
+    @Test
+    void literalDefaultCaseDriftFailsBeforeCreatingOtherTables() {
+        JdbcTemplate jdbc = fresh("defaultcase");
+        jdbc.execute(FoundationSchema.TABLES.getFirst().ddl().replace("DEFAULT 'DISABLED'", "DEFAULT 'disabled'"));
+        assertThat(jdbc.queryForObject("SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='de_ent_user' AND COLUMN_NAME='status'", String.class)).isEqualTo("disabled");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO de_ent_user(id,username,display_name) VALUES(1,'synthetic-user','合成用户')"))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class).satisfies(FoundationMigrationTest::integrityFailure);
+        assertThatThrownBy(() -> new EnterpriseFoundationSqlBlock(jdbc).execute())
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("schema mismatch");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='de_ent_tenant'", Integer.class)).isZero();
+    }
+
+    @Test
+    void startupVerifierRejectsLiteralDefaultCaseDriftInEveryTable() {
+        for (var table : FoundationSchema.TABLES) {
+            JdbcTemplate jdbc = migrated("defaultstartup");
+            jdbc.execute("ALTER TABLE `" + table.name() + "` ALTER COLUMN status SET DEFAULT 'disabled'");
+            assertThatThrownBy(() -> new FoundationSchemaVerifier(new EnterpriseFoundationSqlBlock(jdbc)).run(null))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("schema mismatch");
+            assertThat(jdbc.queryForObject("SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='status'", String.class, table.name())).isEqualTo("disabled");
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM `" + table.name() + "`", Integer.class)).isZero();
+        }
+    }
+
+    @Test
+    void prefixIndexDriftFailsBeforeCreatingOtherTables() {
+        JdbcTemplate jdbc = fresh("prefix");
+        jdbc.execute(FoundationSchema.TABLES.getFirst().ddl().replace("UNIQUE KEY `uk_user_name` (`username`)", "UNIQUE KEY `uk_user_name` (`username`(1))"));
+        assertThat(jdbc.queryForObject("SELECT SUB_PART FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='de_ent_user' AND INDEX_NAME='uk_user_name'", Integer.class)).isEqualTo(1);
+        assertThatThrownBy(() -> new EnterpriseFoundationSqlBlock(jdbc).execute())
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("schema mismatch");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='de_ent_tenant'", Integer.class)).isZero();
+    }
+
+    @Test
+    void startupVerifierRejectsPrefixUniqueSchoolCodeIndexWithoutRepair() {
+        JdbcTemplate jdbc = migrated("prefixstartup");
+        jdbc.execute("ALTER TABLE de_ent_org DROP INDEX uk_org_school_code, ADD UNIQUE INDEX uk_org_school_code (school_code(1))");
+        principals(jdbc);
+        school(jdbc, 101, 10, "001");
+        assertThatThrownBy(() -> school(jdbc, 102, 10, "002"))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class).satisfies(FoundationMigrationTest::integrityFailure);
+        assertThatThrownBy(() -> new FoundationSchemaVerifier(new EnterpriseFoundationSqlBlock(jdbc)).run(null))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("schema mismatch");
+        assertThat(jdbc.queryForObject("SELECT SUB_PART FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='de_ent_org' AND INDEX_NAME='uk_org_school_code'", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_org", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void startupVerifierRejectsDescendingOrAdditionalFunctionalIndexParts() {
+        for (String definition : List.of("school_code DESC", "school_code, ((CHAR_LENGTH(school_code)))")) {
+            JdbcTemplate jdbc = migrated("indexparts");
+            jdbc.execute("ALTER TABLE de_ent_org DROP INDEX uk_org_school_code, ADD UNIQUE INDEX uk_org_school_code (" + definition + ")");
+            List<java.util.Map<String, Object>> before = jdbc.queryForList("SELECT SEQ_IN_INDEX,COLUMN_NAME,COLLATION FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='de_ent_org' AND INDEX_NAME='uk_org_school_code' ORDER BY SEQ_IN_INDEX");
+            if (definition.contains("DESC")) {
+                assertThat(before).hasSize(1);
+                assertThat(before.getFirst().get("COLLATION")).isEqualTo("D");
+            } else {
+                assertThat(before).hasSize(2);
+                assertThat(before.get(1).get("COLUMN_NAME")).isNull();
+            }
+            assertThatThrownBy(() -> new FoundationSchemaVerifier(new EnterpriseFoundationSqlBlock(jdbc)).run(null))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("schema mismatch");
+            assertThat(jdbc.queryForList("SELECT SEQ_IN_INDEX,COLUMN_NAME,COLLATION FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='de_ent_org' AND INDEX_NAME='uk_org_school_code' ORDER BY SEQ_IN_INDEX")).isEqualTo(before);
+        }
+    }
+
     private static void integrityFailure(Throwable error) {
         Throwable root = ((org.springframework.dao.DataAccessException) error).getRootCause();
         assertThat(root).isInstanceOf(java.sql.SQLException.class);

@@ -2,6 +2,8 @@
 
 2026-10-07。本小功能实现四张基础表的正式迁移。集团/学校管理、JPA实体、可信身份解析及资源权限尚未实现。依据PRD R01/R03/R07、MySQL完整字典第1/2/6/7表及ADR-014；设计输入不是业务验收通过证据。结果见末尾实测记录。
 
+2026-10-08评审更正：下方2026-10-07“无新阻断项”自评结论由新评审发现替代。默认值大小写归并和索引前缀遗漏的修复、原因分析及最新验证见[整改记录](schema-validation-review.md)；[ADR-015](../adr/015-schema-validation-and-startup.md)同步精确比较及后续启动架构。4.1 DDL不变，本次不是修改历史迁移结构。
+
 ## 范围与前置
 
 唯一开发主目录为远程`/home/data_dev_zhm/dataease-phase1-test/w02-security/source`，分支`codex/phase1-security-baseline`，基准`50a104fa6d79663c603209f9d033717dd4d12502`。本地只作辅助编写及逐文件审阅镜像。保留两端已有文档、AGENTS、前端及生成差异，不访问XPack实现，不修改子模块指针。

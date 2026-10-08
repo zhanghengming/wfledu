@@ -164,21 +164,28 @@ public final class FoundationSchema {
         for (int i = 0; i < columns.size(); i++) {
             Column wanted = table.columns().get(i);
             Map<String, Object> got = columns.get(i);
-            String def = wanted.defaultValue() == null ? null : wanted.defaultValue().replace("'", "").toLowerCase(java.util.Locale.ROOT);
             require(wanted.name().equals(got.get("COLUMN_NAME")) && wanted.type().equals(got.get("COLUMN_TYPE"))
                     && (wanted.nullable() ? "YES" : "NO").equals(got.get("IS_NULLABLE"))
-                    && java.util.Objects.equals(def, got.get("COLUMN_DEFAULT") == null ? null : got.get("COLUMN_DEFAULT").toString().toLowerCase(java.util.Locale.ROOT))
+                    && defaultMatches(wanted, got.get("COLUMN_DEFAULT"))
                     && wanted.comment().equals(got.get("COLUMN_COMMENT"))
                     && (!wanted.type().startsWith("varchar") || "utf8mb4_0900_bin".equals(got.get("COLLATION_NAME")))
                     && ("".equals(got.get("EXTRA")) || "DEFAULT_GENERATED".equals(got.get("EXTRA"))), table);
         }
-        List<Map<String, Object>> indices = jdbc.queryForList("SELECT INDEX_NAME,NON_UNIQUE,GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS fields,INDEX_TYPE,IS_VISIBLE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? GROUP BY INDEX_NAME,NON_UNIQUE,INDEX_TYPE,IS_VISIBLE", table.name());
-        require(indices.size() == table.keys().size(), table);
+        List<Map<String, Object>> indices = jdbc.queryForList("SELECT INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME,SUB_PART,COLLATION,INDEX_TYPE,IS_VISIBLE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY INDEX_NAME,SEQ_IN_INDEX", table.name());
+        Map<String, List<Map<String, Object>>> byName = new LinkedHashMap<>();
+        indices.forEach(row -> byName.computeIfAbsent(row.get("INDEX_NAME").toString(), ignored -> new ArrayList<>()).add(row));
+        require(byName.size() == table.keys().size(), table);
         for (Key key : table.keys()) {
-            require(indices.stream().anyMatch(row -> key.name().equals(row.get("INDEX_NAME"))
-                    && ((Number) row.get("NON_UNIQUE")).intValue() == (key.unique() ? 0 : 1)
-                    && String.join(",", key.columns()).equals(row.get("fields")) && "BTREE".equals(row.get("INDEX_TYPE"))
-                    && "YES".equals(row.get("IS_VISIBLE"))), table);
+            List<Map<String, Object>> parts = byName.get(key.name());
+            require(parts != null && parts.size() == key.columns().size(), table);
+            for (int i = 0; i < parts.size(); i++) {
+                Map<String, Object> part = parts.get(i);
+                require(((Number) part.get("NON_UNIQUE")).intValue() == (key.unique() ? 0 : 1)
+                        && ((Number) part.get("SEQ_IN_INDEX")).intValue() == i + 1
+                        && key.columns().get(i).equals(part.get("COLUMN_NAME")) && part.get("SUB_PART") == null
+                        && "A".equals(part.get("COLLATION")) && "BTREE".equals(part.get("INDEX_TYPE"))
+                        && "YES".equals(part.get("IS_VISIBLE")), table);
+            }
         }
         List<Map<String, Object>> refs = jdbc.queryForList("SELECT k.CONSTRAINT_NAME,GROUP_CONCAT(k.COLUMN_NAME ORDER BY k.ORDINAL_POSITION) AS fields,k.REFERENCED_TABLE_SCHEMA,k.REFERENCED_TABLE_NAME,GROUP_CONCAT(k.REFERENCED_COLUMN_NAME ORDER BY k.ORDINAL_POSITION) AS targets,r.DELETE_RULE,r.UPDATE_RULE FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND r.TABLE_NAME=k.TABLE_NAME WHERE k.TABLE_SCHEMA=DATABASE() AND k.TABLE_NAME=? GROUP BY k.CONSTRAINT_NAME,k.REFERENCED_TABLE_SCHEMA,k.REFERENCED_TABLE_NAME,r.DELETE_RULE,r.UPDATE_RULE", table.name());
         String database = jdbc.queryForObject("SELECT DATABASE()", String.class);
@@ -193,6 +200,18 @@ public final class FoundationSchema {
         require(constraints.size() == table.checks().size(), table);
         table.checks().forEach((name, expr) -> require(constraints.stream().anyMatch(row -> name.equals(row.get("CONSTRAINT_NAME"))
                 && "YES".equals(row.get("ENFORCED")) && normalizeCheck(expr).equals(normalizeCheck(row.get("CHECK_CLAUSE").toString()))), table));
+    }
+
+    // Normalize only known function names. Literal case, whitespace and embedded quotes are data.
+    static boolean defaultMatches(Column column, Object actual) {
+        String expected = column.defaultValue();
+        if (expected == null || actual == null) return expected == null && actual == null;
+        String value = actual.toString();
+        if (expected.startsWith("'") && expected.endsWith("'")) {
+            return expected.substring(1, expected.length() - 1).replace("''", "'").equals(value);
+        }
+        return expected.matches("CURRENT_TIMESTAMP\\([0-6]\\)")
+                ? expected.equalsIgnoreCase(value) : expected.equals(value);
     }
 
     // MySQL adds literal charset introducers, operator/function casing and outer brackets.

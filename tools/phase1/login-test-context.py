@@ -24,9 +24,34 @@ TOOL_NAMES = ['login-test-context.py', 'browser-login-regression.cjs',
               'verify-database-boundary.py', 'verify-foundation.py']
 
 
+UNIT_SUITES = {'EnterpriseAssemblyGuardTest': 12, 'AccessContextHolderTest': 10,
+               'FoundationConfigurationTest': 6, 'FoundationMigrationTest': 17}
+SCHEMA_REGRESSIONS = {
+    'FoundationConfigurationTest.defaultsPreserveLiteralContentsAndOnlyNormalizeKnownFunctionCase',
+    'FoundationMigrationTest.literalDefaultCaseDriftFailsBeforeCreatingOtherTables',
+    'FoundationMigrationTest.startupVerifierRejectsLiteralDefaultCaseDriftInEveryTable',
+    'FoundationMigrationTest.prefixIndexDriftFailsBeforeCreatingOtherTables',
+    'FoundationMigrationTest.startupVerifierRejectsPrefixUniqueSchoolCodeIndexWithoutRepair',
+    'FoundationMigrationTest.startupVerifierRejectsDescendingOrAdditionalFunctionalIndexParts'
+}
+
+
 def require(value, code):
     if not value:
         raise RuntimeError(code)
+
+
+def validate_unit_suite(doc, name):
+    count = int(doc.attrib['tests'])
+    cases = doc.findall('testcase')
+    require(count >= UNIT_SUITES[name] and count == len(cases)
+            and all(int(doc.attrib[k]) == 0 for k in ['errors', 'failures', 'skipped'])
+            and all(not any(case.find(k) is not None for k in ['failure', 'error', 'skipped']) for case in cases),
+            'UNIT_CASES_NOT_EXECUTED_OR_FAILED')
+    observed = {name + '.' + case.attrib['name'] for case in cases}
+    expected = {case for case in SCHEMA_REGRESSIONS if case.startswith(name + '.')}
+    require(expected <= observed, 'SCHEMA_REGRESSION_CASES_MISSING')
+    return count
 
 
 def digest(data):
@@ -117,24 +142,20 @@ def checks(run_id):
                                     stderr=subprocess.STDOUT, timeout=180)
         require(result.returncode == 0, 'CHECK_FAILED_' + name.upper())
         results[name] = {'passed': True}
-    suites = {'EnterpriseAssemblyGuardTest': 12, 'AccessContextHolderTest': 10,
-              'FoundationConfigurationTest': 5, 'FoundationMigrationTest': 12}
     total = 0
-    for name, minimum in suites.items():
+    for name in UNIT_SUITES:
         paths = list((SOURCE / 'core/core-backend/target/surefire-reports').glob('TEST-*.' + name + '.xml'))
         require(len(paths) == 1 and paths[0].stat().st_mtime >= start, 'STALE_OR_MISSING_UNIT_REPORT')
         doc = ET.parse(paths[0]).getroot()
-        count = int(doc.attrib['tests'])
-        require(count >= minimum and all(int(doc.attrib[k]) == 0 for k in ['errors', 'failures', 'skipped']),
-                'UNIT_CASES_NOT_EXECUTED_OR_FAILED')
-        total += count
+        total += validate_unit_suite(doc, name)
     results['unit']['cases'] = total
+    results['unit']['schemaRegressions'] = sorted(SCHEMA_REGRESSIONS)
     hmac_log = (out / 'hmac.log').read_text()
     require('5 passed' in hmac_log, 'HMAC_CASE_COUNT_MISSING')
     results['hmac']['cases'] = 5
     guard_log = (out / 'receiptGuard.log').read_text()
     match = re.search(r'Ran (\d+) tests', guard_log)
-    require(match and int(match.group(1)) >= 11 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
+    require(match and int(match.group(1)) >= 14 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
     results['receiptGuard']['cases'] = int(match.group(1))
     for name, filename, expected in [('api', 'community-api-results.json', 4),
                                      ('database', 'database-boundary-results.json', 14),
@@ -186,9 +207,11 @@ def verify_gate(head=None):
     remote = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'remote-checks.json').read_text())
     require(remote['identity'] == report['identity'] and remote['checks'] == report['checks'],
             'REMOTE_CHECK_RECEIPT_MISMATCH')
-    for name, minimum in [('unit', 39), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 11), ('foundation', 10)]:
+    for name, minimum in [('unit', 45), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 14), ('foundation', 10)]:
         item = report['checks'].get(name, {})
         require(item.get('passed') is True and item.get('cases', 0) >= minimum, 'REQUIRED_CHECK_MISSING')
+    require(set(report['checks']['unit'].get('schemaRegressions', [])) == SCHEMA_REGRESSIONS,
+            'SCHEMA_REGRESSION_RECEIPT_MISSING')
     required = {kind + '.' + case for kind in ['desktop', 'mobile']
                 for case in ['initialization', 'wrong-password', 'login', 'reload']}
     browser = report['browser']
