@@ -47,6 +47,8 @@ public class ManagementConfiguration {
         @Bean ManagementTransactions managementTransactions(EntityManagerFactory factory,PlatformTransactionManager manager,ManagementSessionService sessions,ManagementAuthority authority){return new ManagementTransactions(factory,requireJpa(manager,factory),sessions,authority);}
         @Bean PlatformManagementService platformManagementService(ManagementTransactions transactions){return new PlatformManagementService(transactions,Clock.systemUTC());}
         @Bean ResourceOwnershipService resourceOwnershipService(ManagementTransactions transactions){return new ResourceOwnershipService(transactions,Clock.systemUTC());}
+        @Bean ManagementPrivilegeGuard managementPrivilegeGuard(ManagementAuthority authority){return new ManagementPrivilegeGuard(authority);}
+        @Bean RoleManagementService roleManagementService(ManagementTransactions transactions,GroupAdministrationInvariant invariant,ManagementPrivilegeGuard privileges){return new RoleManagementService(transactions,invariant,privileges,Clock.systemUTC());}
         @Bean MemberManagementService memberManagementService(ManagementTransactions transactions,GroupAdministrationInvariant invariant){return new MemberManagementService(transactions,invariant,Clock.systemUTC());}
         @Bean OrganizationManagementService organizationManagementService(EntityManagerFactory factory,PlatformTransactionManager manager,ManagementSessionService sessions,ManagementAuthority authority,ManagementTransactions transactions,GroupAdministrationInvariant invariant){
             return new OrganizationManagementService(factory,requireJpa(manager,factory),sessions,authority,transactions,invariant);

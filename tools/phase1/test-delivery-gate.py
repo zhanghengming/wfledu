@@ -20,7 +20,7 @@ class DeliveryGateTest(unittest.TestCase):
         self.identity = {'head': 'synthetic-head', 'jarSha256': 'synthetic-jar', 'controlRuntime': {'pid': 123}}
         self.run = '12345678-1234-1234-1234-123456789abc'
         checks = {name: {'passed': True, 'cases': count} for name, count in
-                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 35), ('foundation', 22), ('control', 80)]}
+                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 40), ('foundation', 22), ('control', 80), ('w04', len(gate.W04_HTTP_CASES))]}
         checks['unit']['schemaRegressions'] = sorted(gate.SCHEMA_REGRESSIONS)
         checks['unit']['jpaRegressions'] = sorted(gate.JPA_REGRESSIONS)
         checks['unit']['mappingRegressions'] = sorted(gate.MAPPING_REGRESSIONS)
@@ -28,6 +28,8 @@ class DeliveryGateTest(unittest.TestCase):
         checks['unit']['evolutionRegressions'] = sorted(gate.EVOLUTION_REGRESSIONS)
         checks['unit']['auditRegressions'] = sorted(gate.AUDIT_REGRESSIONS)
         checks['unit']['w03Regressions'] = sorted(gate.W03_REGRESSIONS)
+        checks['unit']['w04Regressions'] = sorted(gate.W04_REGRESSIONS)
+        checks['w04'].update(requiredCases=sorted(gate.W04_HTTP_CASES), head='synthetic-head', jarSha256='synthetic-jar', controlRuntime={'pid': 123})
         checks['control'].update(requiredCases=sorted(gate.W03_HTTP_CASES), pid=123, jarSha256='synthetic-jar', head='synthetic-head')
         cases = [{'id': kind + '.' + action, 'status': 'passed'}
                  for kind in ['desktop', 'mobile']
@@ -284,10 +286,47 @@ class DeliveryGateTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'CONTROL_RECEIPT_IDENTITY_MISMATCH'): self.verify(report)
 
     def test_high_unit_count_cannot_replace_required_http_methods(self):
-        doc = ET.Element('testsuite', tests='12', failures='0', errors='0', skipped='0')
-        for i in range(12): ET.SubElement(doc, 'testcase', name='unrelated_' + str(i))
+        doc = ET.Element('testsuite', tests='16', failures='0', errors='0', skipped='0')
+        for i in range(16): ET.SubElement(doc, 'testcase', name='unrelated_' + str(i))
         with self.assertRaisesRegex(RuntimeError, 'W03_REGRESSION_CASES_MISSING'):
             gate.validate_unit_suite(doc, 'ManagementHttpBoundaryTest')
+
+
+    def matching_remote(self, report):
+        remote = self.root / 'logs' / ('delivery-' + self.run) / 'remote-checks.json'
+        remote.write_text(json.dumps({'identity': self.identity, 'checks': report['checks']}))
+
+    def test_w03_182_case_receipt_cannot_pass_w04(self):
+        report = copy.deepcopy(self.report); report['checks']['unit']['cases'] = 182
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'): self.verify(report)
+
+    def test_w04_cannot_be_omitted(self):
+        report = copy.deepcopy(self.report); report['checks'].pop('w04')
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'): self.verify(report)
+
+    def test_w04_high_count_cannot_replace_required_http_case(self):
+        report = copy.deepcopy(self.report); report['checks']['w04']['requiredCases'].pop()
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'W04_CASE_RECEIPT_MISSING'): self.verify(report)
+
+    def test_w04_old_runtime_cannot_count_as_current(self):
+        report = copy.deepcopy(self.report); report['checks']['w04']['controlRuntime']['pid'] = 1
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'W04_RECEIPT_IDENTITY_MISMATCH'): self.verify(report)
+
+    def test_w04_method_names_are_mandatory_and_not_just_counts(self):
+        report = copy.deepcopy(self.report); report['checks']['unit']['w04Regressions'].pop()
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'W04_REGRESSION_RECEIPT_MISSING'): self.verify(report)
+        doc = ET.Element('testsuite', tests='16', failures='0', errors='0', skipped='0')
+        methods = sorted(case.split('.', 1)[1] for case in gate.W03_REGRESSIONS if case.startswith('ManagementHttpBoundaryTest.'))
+        for name in methods + ['unrelated_' + str(i) for i in range(4)]:
+            ET.SubElement(doc, 'testcase', name=name)
+        with self.assertRaisesRegex(RuntimeError, 'W04_REGRESSION_CASES_MISSING'):
+            gate.validate_unit_suite(doc, 'ManagementHttpBoundaryTest')
+
 
 if __name__ == '__main__':
     unittest.main()

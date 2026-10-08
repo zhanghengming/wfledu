@@ -47,3 +47,9 @@
 自研DTO／API位于sdk/api/api-permissions，新实现位于core-backend/enterprise，迁移4.3—4.5与历史冻结契约分开。sdk/common新增ManagementRequestBridge并在社区WhitelistUtils.match检查线程限定精确请求作用域；只有真实管理过滤器完成校验后打开，finally关闭，默认无效，不加入永久公开路径。完整产品既有认证继续通过公共接点协作，没有读取或复制专有XPack实现。
 
 组织内核新增HTTP全配置的不可变归属核对；资格／审计使用Spring所属EntityManager的实际RESOURCE_LOCAL活动事务，覆盖open-in-view复用。原生DataVisualizationInfo仅由新管理资源命令与同ID侧表一起创建，社区业务查询／编辑器不提前放行。设计、测试及贡献影响见[实施记录](w03-control-plane.md)、[架构复核](w03-architecture-review.md)与[验收](w03-acceptance.md)。W03仅向项目任务分支交付，不向官方dev-v3或XPack发布。
+
+## W04第2步源码接点（2026-10-08）
+
+角色与任职SDK新增RoleManagementApi和ManagementContract三种请求；实现为自研enterprise管理模块的Server／Service／PrivilegeGuard。复用4.3实体、主体、原事务、ManagementAuthority和最后管理员不变量；旧成员／组织写入口补间接提权保护，现有ManagementRequestFilter仅增加四条精确集团路由，StrictManagementJson仅局部扩展新DTO，审计增加四类类型事件。
+
+没有修改社区ChartDataManage、原公开查询接口、全局Jackson、Vue框架或de-xpack；无新迁移，不更新子模块指针。行为与验证见[第2步实现](w04-role-assignment.md)。后续适配不得通过放开旧业务入口绕过新策略／源绑定。

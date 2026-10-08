@@ -18,6 +18,12 @@ public final class ManagementContract {
     public record OrganizationSave(String mode,String id,String expectedVersion,String kind,String name,String schoolCode,
                                    String parentId,String schoolId,String status) implements Request { }
     public record MemberSave(String mode,String id,String expectedVersion,String userId,String status,List<String> organizationIds) implements Request { }
+    public record RoleSave(String mode, String id, String expectedVersion, String code,
+                           String name, String status) implements Request { }
+    public record AssignmentSave(String mode, String id, String expectedVersion, String memberId,
+                                 String roleId, List<String> schoolIds, String status) implements Request { }
+    public record AssignmentPage(String memberId, String roleId, String schoolId,
+                                 Integer pageNum, Integer pageSize) implements Request { }
     public record Reference(String id) implements Request { }
     public record TenantCreate(String code,String name,String administratorUserId) implements Request { }
     public record UserCreate(String username,String displayName,char[] temporaryPassword) implements Request {

@@ -23,17 +23,21 @@ public final class OrganizationManagementService {
     public OrganizationManagementService(EntityManagerFactory factory,JpaTransactionManager manager,ManagementSessionService sessions,ManagementAuthority authority,ManagementTransactions transactions,GroupAdministrationInvariant invariant){
         this.factory=factory;this.manager=manager;this.sessions=sessions;this.authority=authority;this.transactions=transactions;this.invariant=invariant;
     }
-    private OrganizationTransactionKernel kernel(Principal principal){
+    private OrganizationTransactionKernel kernel(Principal principal){return kernel(principal,null);}
+    private OrganizationTransactionKernel kernel(Principal principal,OrganizationTransactionKernel.Update update){
+        var privileges=new ManagementPrivilegeGuard(authority);
+        var snapshot=new ManagementPrivilegeGuard.Snapshot[1];
         var actualAudit=new OrganizationAuditAppender(factory,()->java.util.UUID.randomUUID().toString());
         var checkedAuthority=new OrganizationTransactionKernel.Authority(){
-            @Override public void requireManage(EntityManager em,AccessContext access){sessions.requireManagementPrincipal(em,principal);authority.requireManage(em,access);}
+            @Override public void requireManage(EntityManager em,AccessContext access){sessions.requireManagementPrincipal(em,principal);authority.requireManage(em,access);
+                if(update!=null)snapshot[0]=privileges.capture(em,access.tenantId(),privileges.organizationUsers(em,access.tenantId(),update));}
             @Override public void requireMappingRead(EntityManager em,AccessContext access){sessions.requireManagementPrincipal(em,principal);
                 if(!ManagementSessionService.qualified(em,access.userId(),"GROUP_READ_ALL"))authority.requireMappingRead(em,access);}
         };
-        return new OrganizationTransactionKernel(factory,manager,checkedAuthority,(em,change)->{invariant.require(em,change.tenantId());actualAudit.append(em,change);},Clock.systemUTC(),128);
+        return new OrganizationTransactionKernel(factory,manager,checkedAuthority,(em,change)->{if(snapshot[0]!=null)privileges.verify(em,snapshot[0]);invariant.require(em,change.tenantId());actualAudit.append(em,change);},Clock.systemUTC(),128);
     }
     public OrganizationTransactionKernel.Mutation create(Principal p,OrganizationTransactionKernel.Create command){return kernel(p).create(command);}
-    public OrganizationTransactionKernel.Mutation update(Principal p,OrganizationTransactionKernel.Update command,OrganizationTransactionKernel.Identity identity){return kernel(p).update(command,identity);}
+    public OrganizationTransactionKernel.Mutation update(Principal p,OrganizationTransactionKernel.Update command,OrganizationTransactionKernel.Identity identity){return kernel(p,command).update(command,identity);}
     public OrganizationTransactionKernel.SchoolReference school(Principal p,long id){return kernel(p).resolveSchoolId(id);}
     public PageResult<Map<String,Object>> page(Principal p,int page,int size){return transactions.group(p,"MANAGE_ORGANIZATIONS",false,(em,tenant)->{
         var records=em.createQuery("from EnterpriseOrganization where tenantId=:tenant order by id",EnterpriseOrganization.class).setParameter("tenant",tenant.getId())

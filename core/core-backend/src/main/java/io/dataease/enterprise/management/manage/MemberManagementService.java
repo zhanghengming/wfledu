@@ -27,7 +27,8 @@ public final class MemberManagementService {
     private final ManagementTransactions transactions;
     private final GroupAdministrationInvariant invariant;
     private final Clock clock;
-    public MemberManagementService(ManagementTransactions transactions,GroupAdministrationInvariant invariant,Clock clock){this.transactions=transactions;this.invariant=invariant;this.clock=clock;}
+    private final ManagementPrivilegeGuard privileges;
+    public MemberManagementService(ManagementTransactions transactions,GroupAdministrationInvariant invariant,Clock clock){this.transactions=transactions;this.invariant=invariant;this.clock=clock;this.privileges=new ManagementPrivilegeGuard(new ManagementAuthority());}
     public PageResult<Map<String,Object>> page(Principal principal,int page,int size){return transactions.group(principal,"MANAGE_MEMBERS",false,(em,tenant)->{
         var members=em.createQuery("select m,u.displayName from EnterpriseTenantMember m,EnterpriseUser u where m.tenantId=:tenant and u.id=m.userId order by m.id",Object[].class)
                 .setParameter("tenant",tenant.getId()).setFirstResult((page-1)*size).setMaxResults(size).getResultList();
@@ -46,6 +47,7 @@ public final class MemberManagementService {
             var target=em.find(EnterpriseUser.class,command.userId(),jakarta.persistence.LockModeType.PESSIMISTIC_READ);
             if(target==null || target.getStatus()!=FoundationStatus.ACTIVE)throw error(ResultCode.RESOURCE_NOT_EXIST);
             for(long org:command.organizationIds())new OrganizationHierarchy(128).requireAvailable(node(em,tenant.getId(),org),id->findNode(em,tenant.getId(),id));
+            var privilegeSnapshot=privileges.capture(em,tenant.getId(),List.of(command.userId()));
             long id,version;var now=now();
             if(command.create()){
                 if(em.createQuery("select count(m) from EnterpriseTenantMember m where m.tenantId=:tenant and m.userId=:user",Long.class).setParameter("tenant",tenant.getId()).setParameter("user",command.userId()).getSingleResult()!=0)throw error(ResultCode.DATA_ALREADY_EXISTED);
@@ -66,6 +68,7 @@ public final class MemberManagementService {
                 var membership=PlatformManagementService.record(new EnterpriseOrgMember(),IDUtils.snowID(),principal.userId(),now);membership.setTenantId(tenant.getId());membership.setMemberId(id);membership.setOrgId(org);membership.setStatus(command.status());em.persist(membership);
             }
             long epoch=tenant.getAccessEpoch()+1;tenant.setAccessEpoch(epoch);tenant.setUpdatedAt(now);tenant.setUpdatedBy(principal.userId());
+            privileges.verify(em,privilegeSnapshot);
             invariant.require(em,tenant.getId());
             em.persist(EnterpriseAuditEvent.management(IDUtils.snowID(),now,tenant.getId(),principal.userId(),command.create()?ManagementEvent.MEMBER_CREATED:ManagementEvent.MEMBER_UPDATED,id,epoch,version));em.flush();
             return Map.of("id",Long.toString(id),"version",Long.toString(version),"accessEpoch",Long.toString(epoch));

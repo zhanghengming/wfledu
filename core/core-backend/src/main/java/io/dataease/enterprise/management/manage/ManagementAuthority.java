@@ -45,6 +45,27 @@ public final class ManagementAuthority implements OrganizationTransactionKernel.
         return facts.size()==1 && evaluate(em,new AccessContext(tenant,user,(Long)facts.getFirst()[1],(Long)facts.getFirst()[0]),"MANAGE_AUTHORIZATION");
     }
 
+    /** Internal facts for mutation checks, never changes the request identity. */
+    Set<String> effectiveCapabilities(EntityManager em, long tenant, long user) {
+        if (em == null || !TransactionSynchronizationManager.isActualTransactionActive()
+                || !em.getTransaction().isActive()
+                || !TransactionSynchronizationManager.getResourceMap().values().stream().anyMatch(
+                    resource -> resource instanceof org.springframework.orm.jpa.EntityManagerHolder holder
+                        && holder.getEntityManager() == em)) {
+            throw new IllegalStateException("Capability snapshot requires the owning transaction");
+        }
+        var revisions = em.createQuery("select u.identityEpoch,t.accessEpoch from EnterpriseUser u,EnterpriseTenant t "
+                        + "where u.id=:user and t.id=:tenant and u.status=:active and t.status=:active", Object[].class)
+                .setParameter("user", user).setParameter("tenant", tenant)
+                .setParameter("active", FoundationStatus.ACTIVE).getResultList();
+        if (revisions.size() != 1) return Set.of();
+        var revision = revisions.getFirst();
+        var context = new AccessContext(tenant, user, (Long) revision[1], (Long) revision[0]);
+        Set<String> result = new java.util.HashSet<>();
+        for (String capability : CAPABILITIES) if (evaluate(em, context, capability)) result.add(capability);
+        return Set.copyOf(result);
+    }
+
     private boolean evaluate(EntityManager em,AccessContext access,String capability) {
         long valid = em.createQuery("SELECT COUNT(m) FROM EnterpriseTenantMember m, EnterpriseUser u, EnterpriseTenant t "
                         + "WHERE m.tenantId=:tenant AND m.userId=:user AND m.status=:active AND u.id=m.userId "

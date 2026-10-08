@@ -32,13 +32,15 @@ public final class StrictManagementJson extends AbstractHttpMessageConverter<Man
             if(tree==null || !tree.isObject())throw invalid();
             var components=type.getRecordComponents();Set<String> fields=Arrays.stream(components).map(java.lang.reflect.RecordComponent::getName).collect(Collectors.toSet());
             var names=tree.fieldNames();while(names.hasNext())if(!fields.contains(names.next()))throw invalid();
-            for(var component:components){var value=tree.get(component.getName());if(value==null || value.isNull())continue;
+            for(var component:components){var value=tree.get(component.getName());
+                if(value!=null && value.isNull() && (type==ManagementContract.RoleSave.class || type==ManagementContract.AssignmentSave.class || type==ManagementContract.AssignmentPage.class))throw invalid();
+                if(value==null || value.isNull())continue;
                 if(component.getType()==String.class || component.getType()==char[].class){if(!value.isTextual())throw invalid();}
                 else if(component.getType()==Integer.class){if(!value.isIntegralNumber() || !value.canConvertToInt())throw invalid();}
                 else if(component.getType()==java.util.List.class){if(!value.isArray() || value.size()>500)throw invalid();for(var item:value)if(!item.isTextual())throw invalid();}
                 else throw invalid();
             }
-            if(type==ManagementContract.OrganizationSave.class || type==ManagementContract.MemberSave.class){
+            if(type==ManagementContract.OrganizationSave.class || type==ManagementContract.MemberSave.class || type==ManagementContract.RoleSave.class || type==ManagementContract.AssignmentSave.class){
                 var mode=tree.get("mode");if(mode==null || !mode.isTextual() || !Set.of("CREATE","UPDATE").contains(mode.textValue()))throw invalid();
                 if(mode.textValue().equals("CREATE") && (tree.has("id") || tree.has("expectedVersion")))throw invalid();
                 if(mode.textValue().equals("UPDATE") && (!tree.hasNonNull("id") || !tree.hasNonNull("expectedVersion")))throw invalid();

@@ -49,7 +49,7 @@ class ManagementHttpBoundaryTest {
     private static final ObjectMapper JSON=new ObjectMapper();
     private static final HttpClient HTTP=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     @SpringBootConfiguration @EnableAutoConfiguration
-    @Import({EnterpriseJpaConfiguration.class,FoundationConfiguration.class,ManagementConfiguration.class,IdentityManagementServer.class,GroupManagementServer.class,io.dataease.enterprise.management.server.ResourceOwnershipServer.class,
+    @Import({EnterpriseJpaConfiguration.class,FoundationConfiguration.class,ManagementConfiguration.class,IdentityManagementServer.class,GroupManagementServer.class,io.dataease.enterprise.management.server.ResourceOwnershipServer.class,io.dataease.enterprise.management.server.RoleManagementServer.class,
             CorsConfig.class,GlobalExceptionHandler.class,io.dataease.enterprise.management.server.ManagementExceptionHandler.class,EnterpriseMigrationEvolutionTest.RepositoryConfiguration.class,
             SpringContextUtil.class,InitSqlListener.class,IDUtils.class,SnowFlake.class})
     static class App {
@@ -258,5 +258,121 @@ class ManagementHttpBoundaryTest {
         assertThat(f.jdbc.queryForObject("SELECT access_epoch FROM de_ent_tenant WHERE id=?",Long.class,tenant)).isEqualTo(epoch);assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_audit_event",Long.class)).isEqualTo(audits);
         f.jdbc.execute("ALTER TABLE de_ent_resource DROP CHECK ck_w03_reject_fixture");code(f.post("resources/create","{\"name\":\"Retry succeeds\"}",a.token()),0);
     }); }
+
+    private static String w04Body(java.util.Map<String,Object> fields) {
+        try { return JSON.writeValueAsString(fields); } catch (Exception failure) { throw new AssertionError(failure); }
+    }
+    private static String w04Role(Fixture f, Group group, String name) {
+        var response=f.post("roles/save",w04Body(java.util.Map.of("mode","CREATE","code",name,"name",name,"status","ACTIVE")),group.token());
+        code(response,0);return response.path("data").path("id").asText();
+    }
+    private static Group w04Delegate(Fixture f, String operator, Group group, String name) {
+        String user=f.user(operator,name);
+        var member=f.post("members/save",w04Body(java.util.Map.of("mode","CREATE","userId",user,"status","ACTIVE","organizationIds",java.util.List.of())),group.token());
+        code(member,0);
+        String token=f.login(name,"SyntheticPassword-123");
+        code(f.post("auth/password","{\"previousPassword\":\"SyntheticPassword-123\",\"newPassword\":\"ReplacementPassword-123\"}",token),0);
+        token=f.login(name,"ReplacementPassword-123");
+        code(f.post("context/switch",w04Body(java.util.Map.of("tenantId",group.tenantId(),"expectedVersion","1")),token),0);
+        return new Group(user,member.path("data").path("id").asText(),group.tenantId(),token);
+    }
+    private static void w04Grant(Fixture f, Group group, String type, String target, String capability, String effect) {
+        String column=switch(type){case "ORG"->"org_id";case "ROLE"->"role_id";case "USER"->"member_id";default->throw new AssertionError();};
+        var subjects=f.jdbc.queryForList("SELECT id FROM de_ent_subject WHERE tenant_id=? AND "+column+"=?",Long.class,Long.parseLong(group.tenantId()),Long.parseLong(target));
+        long subject;
+        if(subjects.isEmpty()){
+            subject=IDUtils.snowID();f.jdbc.update("INSERT INTO de_ent_subject(id,tenant_id,subject_type,"+column+") VALUES(?,?,?,?)",subject,Long.parseLong(group.tenantId()),type,Long.parseLong(target));
+        }else subject=subjects.getFirst();
+        f.jdbc.update("INSERT INTO de_ent_admin_grant(id,tenant_id,subject_id,capability,effect,status) VALUES(?,?,?,?,?,'ACTIVE')",IDUtils.snowID(),Long.parseLong(group.tenantId()),subject,capability,effect);
+    }
+    private static String w04State(Fixture f,Group group) {
+        return f.jdbc.queryForObject("SELECT CONCAT(access_epoch,':',(SELECT COUNT(*) FROM de_ent_audit_event WHERE tenant_id=?),':',"
+                +"(SELECT COUNT(*) FROM de_ent_role_assignment WHERE tenant_id=?),':',(SELECT COUNT(*) FROM de_ent_assignment_school WHERE tenant_id=?))"
+                +" FROM de_ent_tenant WHERE id=?",String.class,Long.parseLong(group.tenantId()),Long.parseLong(group.tenantId()),Long.parseLong(group.tenantId()),Long.parseLong(group.tenantId()));
+    }
+
+    @Test void w04RoleLifecycleStrictCasAndBothGroupDirections(){fixture("httproles",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B");
+        String role=w04Role(f,a,"rector"),foreign=w04Role(f,b,"finance");
+        code(f.post("roles/save",w04Body(java.util.Map.of("mode","CREATE","code","rector","name","Duplicate","status","ACTIVE")),a.token()),50003);
+        String before=w04State(f,a);
+        code(f.post("roles/save",w04Body(java.util.Map.of("mode","UPDATE","id",foreign,"expectedVersion","1","code","finance","name","Bad","status","DISABLED")),a.token()),70002);
+        code(f.post("roles/save",w04Body(java.util.Map.of("mode","UPDATE","id",role,"expectedVersion","1","code","rector","name","Bad","status","DISABLED")),b.token()),70002);
+        assertThat(w04State(f,a)).isEqualTo(before);
+        String update=w04Body(java.util.Map.of("mode","UPDATE","id",role,"expectedVersion","1","code","rector","name","Renamed","status","DISABLED"));
+        code(f.post("roles/save",update,a.token()),0);code(f.post("roles/save",update,a.token()),50002);
+        code(f.post("roles/save",w04Body(java.util.Map.of("mode","UPDATE","id",role,"expectedVersion","2","code","changed","name","Bad","status","ACTIVE")),a.token()),10001);
+        code(f.post("roles/save","{\"mode\":\"CREATE\",\"id\":null,\"code\":\"bad\",\"name\":\"Bad\",\"status\":\"ACTIVE\"}",a.token()),10001);
+        code(f.post("roles/save","{\"mode\":\"CREATE\",\"code\":\"bad\",\"code\":\"bad2\",\"name\":\"Bad\",\"status\":\"ACTIVE\"}",a.token()),10001);
+        code(f.post("assignments/page","{\"memberId\":null}",a.token()),10001);
+        code(f.post("roles/page","{}",null),20001);code(f.post("roles/page","{}",root),70001);
+        var page=f.post("roles/page","{}",a.token());code(page,0);assertThat(page.path("data").path("total").asInt()).isEqualTo(1);
+        assertThat(page.path("data").path("records").get(0).path("name").asText()).isEqualTo("Renamed");
+        assertThat(f.jdbc.queryForObject("SELECT resource_type FROM de_ent_audit_event WHERE event_type='ROLE_UPDATED'",String.class)).isEqualTo("ROLE");
+    });}
+
+    @Test void w04AssignmentPairsReplaceClearRejectCrossGroupAndImmutableRoot(){fixture("httpassignments",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B");
+        String first=f.school(a,"A1"),second=f.school(a,"A2"),foreign=f.school(b,"B1");
+        String rector=w04Role(f,a,"rector"),finance=w04Role(f,a,"finance"),brole=w04Role(f,b,"brole");
+        var body=new java.util.LinkedHashMap<String,Object>(java.util.Map.of("mode","CREATE","memberId",a.memberId(),"roleId",rector,"schoolIds",java.util.List.of(first),"status","ACTIVE"));
+        var created=f.post("assignments/save",w04Body(body),a.token());code(created,0);String id=created.path("data").path("id").asText();
+        code(f.post("assignments/save",w04Body(body),a.token()),50003);
+        body.put("roleId",finance);body.put("schoolIds",java.util.List.of(second));code(f.post("assignments/save",w04Body(body),a.token()),0);
+        var page=f.post("assignments/page",w04Body(java.util.Map.of("memberId",a.memberId())),a.token());code(page,0);
+        var records=page.path("data").path("records");assertThat(records.size()).isEqualTo(2);
+        for(var row:records)assertThat(row.path("schoolIds").get(0).asText()).isEqualTo(row.path("roleId").asText().equals(rector)?first:second);
+        body.put("schoolIds",java.util.List.of(foreign));code(f.post("assignments/save",w04Body(body),a.token()),70002);
+        body.put("schoolIds",java.util.List.of(first));body.put("roleId",brole);code(f.post("assignments/save",w04Body(body),a.token()),70002);
+        body.put("roleId",finance);body.put("memberId",b.memberId());code(f.post("assignments/save",w04Body(body),a.token()),70002);
+        body.put("memberId",a.memberId());body.put("schoolIds",java.util.List.of());code(f.post("assignments/save",w04Body(body),a.token()),10001);
+        body.put("schoolIds",java.util.List.of(first,first));code(f.post("assignments/save",w04Body(body),a.token()),10001);
+        code(f.post("assignments/page",w04Body(java.util.Map.of("schoolId",foreign)),a.token()),70002);
+        body.put("mode","UPDATE");body.put("id",id);body.put("expectedVersion","1");body.put("roleId",rector);body.put("schoolIds",java.util.List.of(first,second));
+        code(f.post("assignments/save",w04Body(body),a.token()),0);code(f.post("assignments/save",w04Body(body),a.token()),50002);
+        body.put("expectedVersion","2");body.put("roleId",finance);code(f.post("assignments/save",w04Body(body),a.token()),10001);
+        body.put("roleId",rector);body.put("status","DISABLED");body.put("schoolIds",java.util.List.of());code(f.post("assignments/save",w04Body(body),a.token()),0);
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_assignment_school WHERE assignment_id=?",Long.class,Long.parseLong(id))).isZero();
+        page=f.post("assignments/page",w04Body(java.util.Map.of("roleId",rector)),a.token());code(page,0);
+        assertThat(page.path("data").path("records").get(0).path("schoolIds").size()).isZero();
+    });}
+
+    @Test void w04DelegatedMemberAndRoleMutationsCannotConferManagement(){fixture("httpdelegation",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A");String school=f.school(a,"A1");
+        Group delegate=w04Delegate(f,root,a,"delegate");
+        w04Grant(f,a,"USER",delegate.memberId(),"MANAGE_MEMBERS","ALLOW");w04Grant(f,a,"USER",delegate.memberId(),"MANAGE_ROLES","ALLOW");
+        w04Grant(f,a,"ORG",school,"MANAGE_AUTHORIZATION","ALLOW");
+        String before=w04State(f,a);
+        code(f.post("members/save",w04Body(java.util.Map.of("mode","UPDATE","id",delegate.memberId(),"expectedVersion","1","userId",delegate.userId(),"status","ACTIVE","organizationIds",java.util.List.of(school))),delegate.token()),70001);
+        assertThat(w04State(f,a)).isEqualTo(before);
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_org_member WHERE member_id=?",Long.class,Long.parseLong(delegate.memberId()))).isZero();
+        String ordinary=w04Role(f,delegate,"ordinary");
+        code(f.post("assignments/save",w04Body(java.util.Map.of("mode","CREATE","memberId",delegate.memberId(),"roleId",ordinary,"schoolIds",java.util.List.of(school),"status","ACTIVE")),delegate.token()),0);
+        String protectedRole=w04Role(f,a,"protected");w04Grant(f,a,"ROLE",protectedRole,"MANAGE_AUTHORIZATION","ALLOW");
+        before=w04State(f,a);
+        code(f.post("assignments/save",w04Body(java.util.Map.of("mode","CREATE","memberId",delegate.memberId(),"roleId",protectedRole,"schoolIds",java.util.List.of(school),"status","ACTIVE")),delegate.token()),70001);
+        assertThat(w04State(f,a)).isEqualTo(before);
+        code(f.post("members/page","{}",delegate.token()),0);code(f.post("roles/page","{}",delegate.token()),0);
+    });}
+
+    @Test void w04OrganizationDenyRemovalAndLastRoleAdministratorRollBack(){fixture("httpadminchanges",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A");String school=f.school(a,"A1");
+        Group delegate=w04Delegate(f,root,a,"delegate");
+        var org=f.post("organizations/save",w04Body(java.util.Map.of("mode","CREATE","kind","DEPARTMENT","name","Deny organization","status","ACTIVE")),a.token());code(org,0);String orgId=org.path("data").path("id").asText();
+        code(f.post("members/save",w04Body(java.util.Map.of("mode","UPDATE","id",delegate.memberId(),"expectedVersion","1","userId",delegate.userId(),"status","ACTIVE","organizationIds",java.util.List.of(orgId))),a.token()),0);
+        w04Grant(f,a,"USER",delegate.memberId(),"MANAGE_ORGANIZATIONS","ALLOW");w04Grant(f,a,"USER",delegate.memberId(),"MANAGE_AUTHORIZATION","ALLOW");w04Grant(f,a,"ORG",orgId,"MANAGE_AUTHORIZATION","DENY");
+        String before=w04State(f,a);
+        code(f.post("organizations/save",w04Body(java.util.Map.of("mode","UPDATE","id",orgId,"expectedVersion","1","kind","DEPARTMENT","name","Deny organization","status","DISABLED")),delegate.token()),70001);
+        assertThat(w04State(f,a)).isEqualTo(before);
+        String protectedRole=w04Role(f,a,"protected");
+        for(String capability:java.util.List.of("MANAGE_ROLES","MANAGE_ORGANIZATIONS","MANAGE_AUTHORIZATION"))w04Grant(f,a,"ROLE",protectedRole,capability,"ALLOW");
+        code(f.post("assignments/save",w04Body(java.util.Map.of("mode","CREATE","memberId",a.memberId(),"roleId",protectedRole,"schoolIds",java.util.List.of(school),"status","ACTIVE")),a.token()),0);
+        f.jdbc.update("UPDATE de_ent_admin_grant g JOIN de_ent_subject s ON g.subject_id=s.id SET g.status='DISABLED' WHERE s.tenant_id=? AND s.member_id=?",Long.parseLong(a.tenantId()),Long.parseLong(a.memberId()));
+        before=w04State(f,a);
+        code(f.post("roles/save",w04Body(java.util.Map.of("mode","UPDATE","id",protectedRole,"expectedVersion","1","code","protected","name","Protected","status","DISABLED")),a.token()),70001);
+        assertThat(w04State(f,a)).isEqualTo(before);
+        code(f.post("organizations/save",w04Body(java.util.Map.of("mode","UPDATE","id",school,"expectedVersion","1","kind","SCHOOL","name","School","schoolCode","A1","status","DISABLED")),a.token()),70001);
+        assertThat(w04State(f,a)).isEqualTo(before);
+    });}
 
 }
