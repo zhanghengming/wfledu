@@ -49,12 +49,15 @@ public class ManagementConfiguration {
         @Bean GroupAdministrationInvariant groupAdministrationInvariant(ManagementAuthority authority){return new GroupAdministrationInvariant(authority);}
         @Bean ManagementTransactions managementTransactions(EntityManagerFactory factory,PlatformTransactionManager manager,ManagementSessionService sessions,ManagementAuthority authority){return new ManagementTransactions(factory,requireJpa(manager,factory),sessions,authority);}
         @Bean PlatformManagementService platformManagementService(ManagementTransactions transactions){return new PlatformManagementService(transactions,Clock.systemUTC());}
-        @Bean ResourceOwnershipService resourceOwnershipService(ManagementTransactions transactions){return new ResourceOwnershipService(transactions,Clock.systemUTC());}
+        @Bean io.dataease.enterprise.permission.domain.PermissionDecision permissionDecision(){return new io.dataease.enterprise.permission.domain.PermissionDecision();}
+        @Bean io.dataease.enterprise.permission.manage.PermissionFactLoader permissionFactLoader(EntityManagerFactory factory){return new io.dataease.enterprise.permission.manage.PermissionFactLoader(factory);}
+        @Bean io.dataease.enterprise.permission.manage.PermissionDecisionService permissionDecisionService(ManagementTransactions transactions,io.dataease.enterprise.permission.manage.PermissionFactLoader loader,io.dataease.enterprise.permission.domain.PermissionDecision decision){return new io.dataease.enterprise.permission.manage.PermissionDecisionService(transactions,loader,decision);}
+        @Bean ResourceOwnershipService resourceOwnershipService(ManagementTransactions transactions,io.dataease.enterprise.permission.manage.PermissionDecisionService decisions){return new ResourceOwnershipService(transactions,decisions,Clock.systemUTC());}
         @Bean ManagementPrivilegeGuard managementPrivilegeGuard(ManagementAuthority authority){return new ManagementPrivilegeGuard(authority);}
         @Bean PermissionReadService permissionReadService(ManagementTransactions transactions){return new PermissionReadService(transactions);}
         @Bean PermissionBatchService permissionBatchService(ManagementTransactions transactions,GroupAdministrationInvariant invariant){return new PermissionBatchService(transactions,invariant,Clock.systemUTC());}
         @Bean RoleManagementService roleManagementService(ManagementTransactions transactions,GroupAdministrationInvariant invariant,ManagementPrivilegeGuard privileges){return new RoleManagementService(transactions,invariant,privileges,Clock.systemUTC());}
-        @Bean MemberManagementService memberManagementService(ManagementTransactions transactions,GroupAdministrationInvariant invariant){return new MemberManagementService(transactions,invariant,Clock.systemUTC());}
+        @Bean MemberManagementService memberManagementService(ManagementTransactions transactions,GroupAdministrationInvariant invariant,ManagementPrivilegeGuard privileges){return new MemberManagementService(transactions,invariant,privileges,Clock.systemUTC());}
         @Bean OrganizationManagementService organizationManagementService(EntityManagerFactory factory,PlatformTransactionManager manager,ManagementSessionService sessions,ManagementAuthority authority,ManagementTransactions transactions,GroupAdministrationInvariant invariant){
             return new OrganizationManagementService(factory,requireJpa(manager,factory),sessions,authority,transactions,invariant);
         }

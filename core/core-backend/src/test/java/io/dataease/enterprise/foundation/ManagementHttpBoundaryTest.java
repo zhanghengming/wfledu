@@ -127,7 +127,7 @@ class ManagementHttpBoundaryTest {
     }
     private static JsonNode request(int port,String path,String body,String token,String...headers){
         try{
-            var builder=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/de2api/api/enterprise/v1/"+path)).timeout(Duration.ofSeconds(10))
+            var builder=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+(path.startsWith("/de2api/")?path:"/de2api/api/enterprise/v1/"+path))).timeout(Duration.ofSeconds(10))
                     .header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(body));
             if(token!=null)builder.header("Authorization","Bearer "+token);for(int i=0;i<headers.length;i+=2)builder.header(headers[i],headers[i+1]);
             var result=HTTP.send(builder.build(),HttpResponse.BodyHandlers.ofString());assertThat(result.headers().firstValue("Cache-Control")).contains("no-store");return JSON.readTree(result.body());
@@ -260,7 +260,7 @@ class ManagementHttpBoundaryTest {
         f.jdbc.execute("ALTER TABLE de_ent_resource DROP CHECK ck_w03_reject_fixture");code(f.post("resources/create","{\"name\":\"Retry succeeds\"}",a.token()),0);
     }); }
 
-    private static String w04Body(java.util.Map<String,Object> fields) {
+    private static String w04Body(Object fields) {
         try { return JSON.writeValueAsString(fields); } catch (Exception failure) { throw new AssertionError(failure); }
     }
     private static String w04Role(Fixture f, Group group, String name) {
@@ -537,6 +537,145 @@ class ManagementHttpBoundaryTest {
         }catch(Exception failure){throw new AssertionError("Concurrent synthetic request failed",failure);}
         var retry=f.post("permissions/batch",body,a.token());code(retry,0);assertThat(retry.path("data").path("replayed").asBoolean()).isTrue();
         assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_grant",Long.class)).isEqualTo(1);assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_grant_school",Long.class)).isEqualTo(1);assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_idempotency",Long.class)).isEqualTo(1);
+    });}
+
+    private static java.util.Map<String,Object> dRule(String type,String resource,String action,String effect,String scope,java.util.List<String> schools) {
+        var sc=new java.util.LinkedHashMap<String,Object>();sc.put("kind",scope);if(schools!=null)sc.put("ids",schools);
+        return java.util.Map.of("operation","UPSERT","policyKind",type.equals("DATASET")?"DATA_ACCESS":"RESOURCE_ACTION","resourceType",type,
+                "resourceScope",resource==null?java.util.Map.of("kind","ALL_DATASETS_IN_TENANT"):java.util.Map.of("kind","EXACT","id",resource),"schoolScope",sc,"action",action,"effect",effect);
+    }
+    private static void dGrant(Fixture f,Group g,String type,String id,Object...rules) {code(f.post("permissions/batch",w04Body(pBatch(f,g,pSubject(type,id),"decision-"+java.util.UUID.randomUUID(),rules)),g.token()),0);}
+    private static String dAssignment(Fixture f,Group g,Group target,String role,String...schools) {
+        var r=f.post("assignments/save",w04Body(java.util.Map.of("mode","CREATE","memberId",target.memberId(),"roleId",role,"status","ACTIVE","schoolIds",java.util.List.of(schools))),g.token());code(r,0);return r.path("data").path("id").asText();
+    }
+    private static JsonNode dPreview(Fixture f,Group g,String target,String type,String resource,String action) {
+        var r=f.post("permissions/preview",w04Body(java.util.Map.of("userId",target,"policyKind",type.equals("DATASET")?"DATA_ACCESS":"RESOURCE_ACTION","resourceType",type,"resourceId",resource,"action",action)),g.token());code(r,0);return r.path("data");
+    }
+    private static void dDatasets(Fixture f,Group a,Group b) {
+        f.jdbc.update("INSERT INTO core_dataset_group(id,name,node_type) VALUES(991,'Finance','dataset'),(992,'Teaching','dataset'),(993,'Foreign','dataset'),(994,'Folder','folder')");
+        f.jdbc.update("INSERT INTO de_ent_resource(id,tenant_id,resource_type,status) VALUES(991,?,'DATASET','ACTIVE'),(992,?,'DATASET','ACTIVE'),(993,?,'DATASET','ACTIVE'),(994,?,'DATASET','ACTIVE'),(995,?,'DATASET','ACTIVE')",Long.parseLong(a.tenantId()),Long.parseLong(a.tenantId()),Long.parseLong(b.tenantId()),Long.parseLong(a.tenantId()),Long.parseLong(a.tenantId()));
+    }
+    @Test void w04DecisionRoleSchoolPairsAndSourcesMatchCurrentNativeDataset() {fixture("httpdecisionpairs",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B"),u=w04Delegate(f,root,a,"mixed");
+        String s1=f.school(a,"A1"),s2=f.school(a,"A2");dDatasets(f,a,b);
+        String principal=w04Role(f,a,"principal"),finance=w04Role(f,a,"finance");String first=dAssignment(f,a,u,principal,s1),second=dAssignment(f,a,u,finance,s2);
+        dGrant(f,a,"ROLE",principal,dRule("DATASET",null,"VIEW","ALLOW","ALL_ACTIVE_IN_TENANT",null));
+        dGrant(f,a,"ROLE",finance,dRule("DATASET","991","VIEW","ALLOW","ASSIGNMENT",null));
+        var p=dPreview(f,a,u.userId(),"DATASET","991","VIEW");assertThat(p.path("authorizationAllowed").asBoolean()).isTrue();assertThat(p.path("allowedSchoolIds").toString()).isEqualTo(w04Body(java.util.List.of(s1,s2)));
+        assertThat(p.path("sources").toString()).contains(first,second);assertThat(p.path("executionReady").asBoolean()).isFalse();assertThat(p.path("pendingChecks").size()).isPositive();
+        p=dPreview(f,a,u.userId(),"DATASET","992","VIEW");assertThat(p.path("allowedSchoolIds").toString()).isEqualTo(w04Body(java.util.List.of(s1)));assertThat(p.path("sources").toString()).doesNotContain(second);
+        assertThat(p.path("identityEpoch").asText()).isEqualTo("2");assertThat(p.path("accessEpoch").asText()).isEqualTo(pEpoch(f,a));assertThat(p.path("resourceVersion").asText()).isEqualTo("1");
+        code(f.post("permissions/preview",w04Body(java.util.Map.of("userId",u.userId(),"policyKind","DATA_ACCESS","resourceType","DATASET","resourceId","991","action","VIEW")),u.token()),70001);
+        code(f.post("assignments/save",w04Body(java.util.Map.of("mode","UPDATE","id",first,"expectedVersion","1","memberId",u.memberId(),"roleId",principal,"status","ACTIVE","schoolIds",java.util.List.of(s1,s2))),a.token()),0);
+        code(f.post("organizations/save",w04Body(java.util.Map.of("mode","UPDATE","id",s2,"expectedVersion","1","kind","SCHOOL","name","School","schoolCode","A2","status","DISABLED")),a.token()),0);
+        assertThat(dPreview(f,a,u.userId(),"DATASET","991","VIEW").path("allowedSchoolIds").toString()).isEqualTo(w04Body(java.util.List.of(s1)));
+        assertThat(dPreview(f,a,u.userId(),"DATASET","992","VIEW").path("allowedSchoolIds").toString()).isEqualTo(w04Body(java.util.List.of(s1)));
+
+    });}
+    @Test void w04DecisionOrganizationPersonalDenyAndOperationPrerequisites() {fixture("httpdecisionmerge",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B"),u=w04Delegate(f,root,a,"mixed");String s1=f.school(a,"A1"),s2=f.school(a,"A2");dDatasets(f,a,b);
+        String role=w04Role(f,a,"principal");dAssignment(f,a,u,role,s1);dGrant(f,a,"ROLE",role,dRule("DATASET",null,"VIEW","ALLOW","ASSIGNMENT",null),dRule("DATASET",null,"EXPORT","ALLOW","ASSIGNMENT",null));
+        String dept=f.post("organizations/save",w04Body(java.util.Map.of("mode","CREATE","kind","DEPARTMENT","name","Finance","schoolId",s2,"status","ACTIVE")),a.token()).path("data").path("id").asText();
+        dGrant(f,a,"ORG",s2,dRule("DATASET",null,"VIEW","ALLOW","ALL_ACTIVE_IN_TENANT",null));
+        code(f.post("members/save",w04Body(java.util.Map.of("mode","UPDATE","id",u.memberId(),"expectedVersion","1","userId",u.userId(),"status","ACTIVE","organizationIds",java.util.List.of(dept))),a.token()),0);
+        assertThat(dPreview(f,a,u.userId(),"DATASET","991","VIEW").path("allowedSchoolIds").toString()).isEqualTo(w04Body(java.util.List.of(s1)));
+        dGrant(f,a,"ORG",dept,dRule("DATASET","991","VIEW","ALLOW","EXPLICIT",java.util.List.of(s2)));
+        dGrant(f,a,"USER",u.userId(),dRule("DATASET","991","EXPORT","DENY","EXPLICIT",java.util.List.of(s1)),dRule("DATASET","991","DRILL","ALLOW","ALL_ACTIVE_IN_TENANT",null));
+        var p=dPreview(f,a,u.userId(),"DATASET","991","VIEW");assertThat(p.path("allowedSchoolIds").size()).isEqualTo(2);
+        assertThat(dPreview(f,a,u.userId(),"DATASET","991","EXPORT").path("authorizationAllowed").asBoolean()).isFalse();assertThat(dPreview(f,a,u.userId(),"DATASET","991","DRILL").path("allowedSchoolIds").size()).isEqualTo(2);
+        dGrant(f,a,"USER",u.userId(),dRule("DATASET","991","VIEW","DENY","EXPLICIT",java.util.List.of(s2)));
+        assertThat(dPreview(f,a,u.userId(),"DATASET","991","DRILL").path("allowedSchoolIds").toString()).isEqualTo(w04Body(java.util.List.of(s1)));
+    });}
+    @Test void w04DecisionPreviewAndControlledResourceSharePolicyWithoutOpeningPayload() {fixture("httpdecisionresource",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),u=w04Delegate(f,root,a,"viewer");String id=f.post("resources/create","{\"name\":\"Empty\"}",a.token()).path("data").path("id").asText();
+        String body=w04Body(java.util.Map.of("id",id,"action","VIEW"));code(f.post("resources/read",body,u.token()),70001);
+        assertThat(dPreview(f,a,a.userId(),"DASHBOARD",id,"VIEW").path("authorizationAllowed").asBoolean()).isFalse();
+        dGrant(f,a,"USER",u.userId(),dRule("DASHBOARD",id,"VIEW","ALLOW","NONE",null));var p=dPreview(f,a,u.userId(),"DASHBOARD",id,"VIEW");assertThat(p.path("authorizationAllowed").asBoolean()).isTrue();assertThat(p.path("allowedSchoolIds").size()).isZero();code(f.post("resources/read",body,u.token()),0);
+        for(String action:java.util.List.of("EDIT","EXPORT","DRILL"))code(f.post("resources/read",w04Body(java.util.Map.of("id",id,"action",action)),u.token()),70001);
+        f.jdbc.update("UPDATE data_visualization_info SET component_data='[{\"secret\":true}]' WHERE id=?",Long.parseLong(id));code(f.post("resources/read",body,u.token()),70002);
+        f.jdbc.update("UPDATE data_visualization_info SET component_data='[]' WHERE id=?",Long.parseLong(id));
+        dGrant(f,a,"USER",u.userId(),dRule("DASHBOARD",id,"VIEW","DENY","NONE",null));assertThat(dPreview(f,a,u.userId(),"DASHBOARD",id,"VIEW").path("authorizationAllowed").asBoolean()).isFalse();code(f.post("resources/read",body,u.token()),70001);
+    });}
+    @Test void w04DecisionPreviewRejectsForgedTargetsResourcesAndRevisionWithoutWriting() {fixture("httpdecisionboundary",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B");f.school(a,"A1");f.school(b,"B1");dDatasets(f,a,b);String before=pState(f,a);
+        var body=new java.util.LinkedHashMap<String,Object>(java.util.Map.of("userId",a.userId(),"policyKind","DATA_ACCESS","resourceType","DATASET","resourceId","991","action","VIEW"));
+        for(String id:java.util.List.of("993","994","995")){body.put("resourceId",id);code(f.post("permissions/preview",w04Body(body),a.token()),70002);}
+        body.put("resourceId","991");body.put("userId",b.userId());code(f.post("permissions/preview",w04Body(body),a.token()),70002);
+        body.put("userId",a.userId());body.put("expectedEpoch","1");code(f.post("permissions/preview",w04Body(body),a.token()),50002);body.remove("expectedEpoch");
+        for(String field:java.util.List.of("tenantId","operatorUserId","schoolIds")){body.put(field,"1");code(f.post("permissions/preview",w04Body(body),a.token()),10001);body.remove(field);}
+        body.put("userId",Long.parseLong(a.userId()));code(f.post("permissions/preview",w04Body(body),a.token()),10001);
+        code(f.post("permissions/preview","{\"userId\":\"1\",\"userId\":\"2\"}",a.token()),10001);assertThat(pState(f,a)).isEqualTo(before);
+        body.put("userId",b.userId());body.put("resourceId","991");code(f.post("permissions/preview",w04Body(body),b.token()),70002);
+    });}
+    @Test void w04DecisionPlatformViewQualificationIsExplicitAndOtherActionsRemainOrdinary() {fixture("httpdecisionplatform",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B");String s1=f.school(a,"A1"),s2=f.school(a,"A2");dDatasets(f,a,b);
+        String operatorId=f.jdbc.queryForObject("SELECT id FROM de_ent_user WHERE username='operator'",Long.class).toString();
+        var p=dPreview(f,a,operatorId,"DATASET","991","VIEW");assertThat(p.path("authorizationAllowed").asBoolean()).isTrue();assertThat(p.path("allowedSchoolIds").size()).isEqualTo(2);
+        assertThat(dPreview(f,a,operatorId,"DATASET","991","EXPORT").path("authorizationAllowed").asBoolean()).isFalse();
+        code(f.post("members/save",w04Body(java.util.Map.of("mode","CREATE","userId",operatorId,"status","ACTIVE","organizationIds",java.util.List.of())),a.token()),0);
+        dGrant(f,a,"USER",operatorId,dRule("DATASET","991","VIEW","DENY","ALL_ACTIVE_IN_TENANT",null));assertThat(dPreview(f,a,operatorId,"DATASET","991","VIEW").path("authorizationAllowed").asBoolean()).isTrue();
+        dGrant(f,a,"USER",operatorId,dRule("DATASET","991","EXPORT","ALLOW","EXPLICIT",java.util.List.of(s1)));
+        assertThat(dPreview(f,a,operatorId,"DATASET","991","EXPORT").path("allowedSchoolIds").toString()).isEqualTo(w04Body(java.util.List.of(s1)));
+        dGrant(f,a,"USER",operatorId,dRule("DATASET","991","EXPORT","DENY","EXPLICIT",java.util.List.of(s1)));
+        assertThat(dPreview(f,a,operatorId,"DATASET","991","EXPORT").path("authorizationAllowed").asBoolean()).isFalse();
+        f.jdbc.update("UPDATE de_ent_platform_qualification SET status='DISABLED' WHERE user_id="+operatorId+" AND qualification='GROUP_READ_ALL'");assertThat(dPreview(f,a,operatorId,"DATASET","991","VIEW").path("authorizationAllowed").asBoolean()).isFalse();
+        var page=f.post("roles/page","{}",a.token());code(page,0);assertThat(page.path("data").path("total").asInt()).isZero();
+    });}
+
+    @Test void w04RevocationExplicitSchoolDependencyCannotRemoveManagementDeny() {fixture("httprevocationdependency",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),u=w04Delegate(f,root,a,"delegate");String school=f.school(a,"A1");
+        var dept=f.post("organizations/save",w04Body(java.util.Map.of("mode","CREATE","kind","DEPARTMENT","name","Linked deny","schoolId",school,"status","ACTIVE")),a.token());code(dept,0);String id=dept.path("data").path("id").asText();
+        code(f.post("members/save",w04Body(java.util.Map.of("mode","UPDATE","id",u.memberId(),"expectedVersion","1","userId",u.userId(),"status","ACTIVE","organizationIds",java.util.List.of(id))),a.token()),0);
+        w04Grant(f,a,"USER",u.memberId(),"MANAGE_ORGANIZATIONS","ALLOW");w04Grant(f,a,"USER",u.memberId(),"MANAGE_AUTHORIZATION","ALLOW");w04Grant(f,a,"ORG",id,"MANAGE_AUTHORIZATION","DENY");
+        code(f.post("admin-capabilities/page",w04Body(java.util.Map.of("subject",pSubject("USER",u.userId()))),u.token()),70001);
+        String before=pState(f,a);String orgBefore=f.jdbc.queryForList("SELECT * FROM de_ent_org WHERE tenant_id=? ORDER BY id",Long.parseLong(a.tenantId())).toString();
+        code(f.post("organizations/save",w04Body(java.util.Map.of("mode","UPDATE","id",school,"expectedVersion","1","kind","SCHOOL","name","School","schoolCode","A1","status","DISABLED")),u.token()),70001);
+        assertThat(pState(f,a)).isEqualTo(before);assertThat(f.jdbc.queryForList("SELECT * FROM de_ent_org WHERE tenant_id=? ORDER BY id",Long.parseLong(a.tenantId())).toString()).isEqualTo(orgBefore);
+        code(f.post("admin-capabilities/page",w04Body(java.util.Map.of("subject",pSubject("USER",u.userId()))),u.token()),70001);
+        // An authorization administrator may deliberately make this change; the member is then reevaluated.
+        code(f.post("organizations/save",w04Body(java.util.Map.of("mode","UPDATE","id",school,"expectedVersion","1","kind","SCHOOL","name","School","schoolCode","A1","status","DISABLED")),a.token()),0);
+        code(f.post("admin-capabilities/page",w04Body(java.util.Map.of("subject",pSubject("USER",u.userId()))),u.token()),0);
+    });}
+    @Test void w04RevocationOldSessionsRecheckRulesRolesOrganizationsAndMembership() {fixture("httprevocations",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B"),u=w04Delegate(f,root,a,"viewer");String school=f.school(a,"A1");dDatasets(f,a,b);
+        String dash=f.post("resources/create","{\"name\":\"Empty\"}",a.token()).path("data").path("id").asText();String role=w04Role(f,a,"reader");dAssignment(f,a,u,role,school);
+        dGrant(f,a,"ROLE",role,dRule("DASHBOARD",dash,"VIEW","ALLOW","NONE",null));String view=w04Body(java.util.Map.of("id",dash,"action","VIEW"));code(f.post("resources/read",view,u.token()),0);
+        code(f.post("roles/save",w04Body(java.util.Map.of("mode","UPDATE","id",role,"expectedVersion","1","code","reader","name","Reader","status","DISABLED")),a.token()),0);code(f.post("resources/read",view,u.token()),70001);
+        dGrant(f,a,"ORG",school,dRule("DASHBOARD",dash,"VIEW","ALLOW","NONE",null));code(f.post("members/save",w04Body(java.util.Map.of("mode","UPDATE","id",u.memberId(),"expectedVersion","1","userId",u.userId(),"status","ACTIVE","organizationIds",java.util.List.of(school))),a.token()),0);code(f.post("resources/read",view,u.token()),0);
+        code(f.post("members/save",w04Body(java.util.Map.of("mode","UPDATE","id",u.memberId(),"expectedVersion","2","userId",u.userId(),"status","ACTIVE","organizationIds",java.util.List.of())),a.token()),0);code(f.post("resources/read",view,u.token()),70001);
+        dGrant(f,a,"USER",u.userId(),dRule("DASHBOARD",dash,"VIEW","ALLOW","NONE",null));code(f.post("resources/read",view,u.token()),0);
+        var row=f.post("permissions/rules/page",w04Body(java.util.Map.of("subject",pSubject("USER",u.userId()))),a.token()).path("data").path("rules").path("records").get(0);
+        code(f.post("permissions/batch",w04Body(pBatch(f,a,pSubject("USER",u.userId()),"revocation-delete-allow",java.util.Map.of("operation","DELETE","grantId",row.path("id").asText(),"expectedVersion",row.path("version").asText()))),a.token()),0);code(f.post("resources/read",view,u.token()),70001);
+        dGrant(f,a,"USER",u.userId(),dRule("DASHBOARD",dash,"VIEW","ALLOW","NONE",null));code(f.post("resources/read",view,u.token()),0);
+        code(f.post("members/save",w04Body(java.util.Map.of("mode","UPDATE","id",u.memberId(),"expectedVersion","3","userId",u.userId(),"status","DISABLED","organizationIds",java.util.List.of())),a.token()),0);code(f.post("resources/read",view,u.token()),70001);
+        assertThat(dPreview(f,a,u.userId(),"DASHBOARD",dash,"VIEW").path("authorizationAllowed").asBoolean()).isFalse();
+    });}
+    @Test void w04RevocationFactReadSerializesWithPermissionWriteAndRejectsStaleEpoch() {fixture("httprevocationrace",false,2,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B"),u=w04Delegate(f,root,a,"viewer");String school=f.school(a,"A1");dDatasets(f,a,b);
+        dGrant(f,a,"USER",u.userId(),dRule("DATASET","991","VIEW","ALLOW","EXPLICIT",java.util.List.of(school)));
+        var sessions=f.context.getBean(io.dataease.enterprise.identity.manage.ManagementSessionService.class);var principal=sessions.authenticate(a.token());var access=sessions.access(principal);
+        var transactions=f.context.getBean(io.dataease.enterprise.management.manage.ManagementTransactions.class);var loader=f.context.getBean(io.dataease.enterprise.permission.manage.PermissionFactLoader.class);var engine=f.context.getBean(io.dataease.enterprise.permission.domain.PermissionDecision.class);
+        var locked=new CountDownLatch(1);var proceed=new CountDownLatch(1);String oldEpoch=pEpoch(f,a);
+        try(var executor=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var read=executor.submit(()->{try(var scope=io.dataease.enterprise.context.AccessContextHolder.open(access)){return transactions.group(principal,null,false,(em,tenant)->{locked.countDown();try{if(!proceed.await(5,TimeUnit.SECONDS))throw new AssertionError("Read release timeout");}catch(InterruptedException ex){throw new AssertionError(ex);}return loader.load(em,tenant,Long.parseLong(u.userId()),"DATASET",991);});}});
+            assertThat(locked.await(5,TimeUnit.SECONDS)).isTrue();
+            var body=w04Body(pBatch(f,a,pSubject("USER",u.userId()),"revocation-concurrent-deny",dRule("DATASET","991","VIEW","DENY","EXPLICIT",java.util.List.of(school))));
+            var write=executor.submit(()->f.post("permissions/batch",body,a.token()));
+            assertThatThrownBy(()->write.get(250,TimeUnit.MILLISECONDS)).isInstanceOf(java.util.concurrent.TimeoutException.class);proceed.countDown();var facts=read.get(10,TimeUnit.SECONDS);code(write.get(10,TimeUnit.SECONDS),0);
+            assertThat(Long.toString(facts.accessEpoch())).isEqualTo(oldEpoch);assertThat(engine.evaluate(facts,"VIEW").authorizationAllowed()).isTrue();
+            var current=dPreview(f,a,u.userId(),"DATASET","991","VIEW");assertThat(current.path("accessEpoch").asText()).isNotEqualTo(oldEpoch);assertThat(current.path("authorizationAllowed").asBoolean()).isFalse();
+            try(var scope=io.dataease.enterprise.context.AccessContextHolder.open(access)){assertThatThrownBy(()->transactions.group(principal,null,false,(em,tenant)->loader.load(em,tenant,Long.parseLong(u.userId()),"DATASET",991))).isInstanceOf(io.dataease.exception.DEException.class);}
+        } catch(Exception failure){throw new AssertionError("Permission revision concurrency failed",failure);}finally{proceed.countDown();}
+    });}
+    @Test void w04RevocationPreviewTargetsNeverReplaceWorkerIdentityOrOpenLegacyRoutes() {fixture("httprevocationworker",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B"),u=w04Delegate(f,root,a,"viewer");f.school(a,"A1");f.school(b,"B1");dDatasets(f,a,b);
+        String ad=f.post("resources/create","{\"name\":\"A empty\"}",a.token()).path("data").path("id").asText(),bd=f.post("resources/create","{\"name\":\"B empty\"}",b.token()).path("data").path("id").asText();
+        dPreview(f,a,u.userId(),"DATASET","991","VIEW");code(f.post("members/page","{}",a.token()),0);code(f.post("members/page","{}",u.token()),70001);
+        for(var pair:java.util.List.of(java.util.List.of(a,bd),java.util.List.of(b,ad))){Group g=(Group)pair.get(0);String foreign=(String)pair.get(1);code(f.post("resources/read",w04Body(java.util.Map.of("id",foreign,"action","VIEW")),g.token()),70002);
+            for(String route:java.util.List.of("chartData/getData","datasetData/previewData","visualization/save","visualization/findById","chartData/export","link/info","embedded/info","task/page"))code(f.post("/de2api/"+route,"{}",g.token()),70001);
+            code(f.post("organizations/page","{}",g.token()),0);
+        }
+        assertThat(io.dataease.enterprise.context.AccessContextHolder.current()).isEmpty();
     });}
 
 }

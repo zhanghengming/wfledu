@@ -20,8 +20,9 @@ import java.util.Map;
 /** W03 exercises native ownership only. W04 supplies ordinary VIEW and W05 analysis queries. */
 public final class ResourceOwnershipService {
     private final ManagementTransactions transactions;
+    private final io.dataease.enterprise.permission.manage.PermissionDecisionService decisions;
     private final Clock clock;
-    public ResourceOwnershipService(ManagementTransactions transactions, Clock clock) { this.transactions=transactions;this.clock=clock; }
+    public ResourceOwnershipService(ManagementTransactions transactions, io.dataease.enterprise.permission.manage.PermissionDecisionService decisions, Clock clock) { this.transactions=transactions;this.decisions=decisions;this.clock=clock; }
     public Map<String,String> create(Principal principal,String name) {
         ManagementFields.text(name,128);
         return transactions.group(principal,"INSTANTIATE_TEMPLATES",true,(em,tenant)->{
@@ -48,7 +49,7 @@ public final class ResourceOwnershipService {
             var owners=em.createQuery("from EnterpriseResource where tenantId=:tenant and id=:id and resourceType='DASHBOARD'",EnterpriseResource.class)
                     .setParameter("tenant",tenant.getId()).setParameter("id",id).getResultList();
             if(owners.size()!=1 || owners.getFirst().getStatus()!=FoundationStatus.ACTIVE)throw error(ResultCode.RESOURCE_NOT_EXIST);
-            if(!action.equals("VIEW") || !ManagementSessionService.qualified(em,principal.userId(),"GROUP_READ_ALL"))throw error(ResultCode.PERMISSION_NO_ACCESS);
+            if(!action.equals("VIEW") || !decisions.evaluate(em,tenant,principal.userId(),"DASHBOARD",id,"VIEW").authorizationAllowed())throw error(ResultCode.PERMISSION_NO_ACCESS);
             var nativeResource=em.find(DataVisualizationInfo.class,id);
             if(nativeResource==null || Boolean.TRUE.equals(nativeResource.getDeleteFlag()) || !"panel".equals(nativeResource.getNodeType())
                     || !"dashboard".equals(nativeResource.getType()) || !tenant.getId().equals(nativeResource.getOrgId())

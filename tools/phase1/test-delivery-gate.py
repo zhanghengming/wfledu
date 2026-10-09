@@ -23,7 +23,7 @@ class DeliveryGateTest(unittest.TestCase):
         self.identity = {'head': 'synthetic-head', 'jarSha256': 'synthetic-jar', 'controlRuntime': {'pid': 123}}
         self.run = '12345678-1234-1234-1234-123456789abc'
         checks = {name: {'passed': True, 'cases': count} for name, count in
-                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 66), ('foundation', 25), ('control', 80), ('w04', len(gate.W04_HTTP_CASES)), ('permissions', len(gate.PERMISSION_HTTP_CASES)), ('storage', len(gate.STORAGE_CASES)), ('resource', len(gate.RESOURCE_CASES))]}
+                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 76), ('foundation', 25), ('control', 80), ('w04', len(gate.W04_HTTP_CASES)), ('permissions', len(gate.PERMISSION_HTTP_CASES)), ('decisions', len(gate.DECISION_HTTP_CASES)), ('storage', len(gate.STORAGE_CASES)), ('resource', len(gate.RESOURCE_CASES))]}
         checks['unit']['schemaRegressions'] = sorted(gate.SCHEMA_REGRESSIONS)
         checks['unit']['jpaRegressions'] = sorted(gate.JPA_REGRESSIONS)
         checks['unit']['mappingRegressions'] = sorted(gate.MAPPING_REGRESSIONS)
@@ -36,6 +36,7 @@ class DeliveryGateTest(unittest.TestCase):
         checks['unit']['grantStorageRegressions'] = sorted(gate.GRANT_STORAGE_REGRESSIONS)
         checks['unit']['idempotencyStorageRegressions'] = sorted(gate.IDEMPOTENCY_STORAGE_REGRESSIONS)
         checks['resource'].update(requiredCases=sorted(gate.RESOURCE_CASES), identity=self.identity, runId=self.run)
+        checks['decisions'].update(requiredCases=sorted(gate.DECISION_HTTP_CASES), identity=self.identity, runId=self.run)
         checks['permissions'].update(requiredCases=sorted(gate.PERMISSION_HTTP_CASES), identity=self.identity, runId=self.run)
         checks['storage'].update(requiredCases=sorted(gate.STORAGE_CASES), identity=self.identity, runId=self.run)
         checks['w04'].update(requiredCases=sorted(gate.W04_HTTP_CASES), head='synthetic-head', jarSha256='synthetic-jar', controlRuntime={'pid': 123})
@@ -71,6 +72,9 @@ class DeliveryGateTest(unittest.TestCase):
         self.permissions = {'schemaVersion': 1, 'runId': self.run, 'passed': True, 'identity': self.identity,
                             'cases': [{'id': name, 'status': 'passed'} for name in sorted(gate.PERMISSION_HTTP_CASES)]}
         (out / 'w04-step4-http.json').write_text(json.dumps(self.permissions))
+
+        self.decisions = {'schemaVersion': 1, 'runId': self.run, 'passed': True, 'identity': self.identity, 'cases': [{'id': name, 'status': 'passed'} for name in sorted(gate.DECISION_HTTP_CASES)]}
+        (out / 'w04-decisions-http.json').write_text(json.dumps(self.decisions))
 
     def tearDown(self):
         self.temp.cleanup()
@@ -492,6 +496,59 @@ class DeliveryGateTest(unittest.TestCase):
         report = copy.deepcopy(self.report); report['checks']['permissions']['runId'] = 'another-run'; self.matching_remote(report)
         with self.assertRaisesRegex(RuntimeError, 'PERMISSION_RUN_ID_MISMATCH'): self.verify(report)
 
+
+    def test_decision_evaluation_cannot_be_omitted(self):
+        report = copy.deepcopy(self.report); report['checks'].pop('decisions'); self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'): self.verify(report)
+
+    def test_decision_evaluation_required_cases_cannot_be_replaced_by_counts(self):
+        report = copy.deepcopy(self.report); report['checks']['decisions']['requiredCases'].pop(); self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'DECISION_CASE_RECEIPT_MISSING'): self.verify(report)
+
+    def test_decision_evaluation_old_identity_rejected(self):
+        data = copy.deepcopy(self.decisions); data['identity'] = {'head': 'old'}
+        with self.assertRaisesRegex(RuntimeError, 'DECISION_RECEIPT_IDENTITY_MISMATCH'): gate.validate_decision_report(data, self.identity)
+
+    def test_decision_evaluation_missing_or_failed_case_rejected(self):
+        for change in ['missing', 'failed', 'duplicate']:
+            data = copy.deepcopy(self.decisions)
+            if change == 'missing': data['cases'].pop()
+            elif change == 'failed': data['cases'][0]['status'] = 'failed'
+            else: data['cases'].append(data['cases'][0])
+            with self.assertRaisesRegex(RuntimeError, 'DECISION_CASES_MISSING_OR_FAILED'): gate.validate_decision_report(data, self.identity)
+
+    def test_decision_evaluation_failed_report_rejected(self):
+        data = copy.deepcopy(self.decisions); data['passed'] = False
+        with self.assertRaisesRegex(RuntimeError, 'DECISION_NOT_PASSED'): gate.validate_decision_report(data, self.identity)
+
+    def test_decision_evaluation_run_id_mismatch_rejected(self):
+        report = copy.deepcopy(self.report); report['checks']['decisions']['runId'] = 'another-run'; self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'DECISION_RUN_ID_MISMATCH'): self.verify(report)
+
+
+    def build_record(self):
+        return {'passed': True, 'state': 'PASSED', 'sourceSha256': 'source', 'jarSha256': 'jar', 'stages': {name: {'passed': True, 'exitCode': 0} for name in ['sdk', 'frontend', 'backend']}}
+
+    def test_actual_successful_build_binds_exact_source_and_jar_content(self):
+        gate.validate_build_binding(self.build_record(), 'source', 'jar')
+
+    def test_changed_source_or_jar_cannot_use_previous_successful_build(self):
+        for source, jar in [('new-source', 'jar'), ('source', 'new-jar')]:
+            with self.assertRaisesRegex(RuntimeError, 'PRODUCT_BUILD_BINDING_MISMATCH'): gate.validate_build_binding(self.build_record(), source, jar)
+
+    def test_failed_or_incomplete_product_build_cannot_be_accepted(self):
+        for build in [None, {}, {**self.build_record(), 'passed': False}, {**self.build_record(), 'state': 'RUNNING'}]:
+            with self.assertRaisesRegex(RuntimeError, 'PRODUCT_BUILD_NOT_PASSED'): gate.validate_build_binding(build, 'source', 'jar')
+
+    def test_all_three_actual_build_stage_proofs_are_required(self):
+        for mode in ['missing', 'failed', 'exit', 'extra', 'invalid']:
+            build=self.build_record()
+            if mode == 'missing': build['stages'].pop('frontend')
+            elif mode == 'failed': build['stages']['backend']['passed']=False
+            elif mode == 'exit': build['stages']['backend']['exitCode']=1
+            elif mode == 'extra': build['stages']['another']={'passed':True,'exitCode':0}
+            else: build['stages']=[]
+            with self.assertRaisesRegex(RuntimeError, 'PRODUCT_BUILD_STAGE_PROOF_MISSING'): gate.validate_build_binding(build, 'source', 'jar')
 
 if __name__ == '__main__':
     unittest.main()

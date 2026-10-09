@@ -116,3 +116,11 @@ USER主体使用全局用户ID，经集团成员定位；ORG主体首次写时�
 幂等重放仍先鉴权，按集团／用户／操作／键隔离，24小时期限；同摘要返回原commitEpoch及当前epoch，不因旧expectedEpoch重复执行。共享事务加锁后refresh集团实体，避免认证校验先加载的旧实体影响并发判断；旧上下文可被拒绝，随后合法重试读取已提交结果。独立验收及完整门禁详见本轮交付文件；局部回归不能替代整包。
 
 组织引用统一采用分批事实闭包＋OrganizationHierarchy，闭包包含显式schoolId及祖先，避免parentId单路径遗漏集团直属但归属于学校的部门。删除已停用主体历史规则只复核归属及版本，不以重新激活主体作为撤权前提；UPSERT仍要求当前可用。该修复以旧实现失败和新实现通过留证，最终重建包已通过候选完整门禁。
+
+## 第5—7步实施契约补充（2026-10-09）
+
+正式实现为PermissionDecision、PermissionFactLoader和PermissionDecisionService，SDK新增permissions/preview。预览字段、求交算法、平台资格及执行范围以[权限决策记录](../development/w04-permission-decision.md)为准；阶段步骤和相关测试以[连续实施记录](../development/w04-remaining-execution.md)为准，完整结果见最终回执。AuthorizationDecision在既有设计中是逻辑概念，本轮实际类型为PermissionDecision.Result/Facts；后续消费实际类型，不再建平行求值器。
+
+数据策略、管理资格、资源归属和执行就绪分别判断。VIEW前置采用实际有效查看结果，包括明确平台逐集团查看资格；非VIEW仍要求本集团有效成员和单独操作规则，操作禁止优先。组织变更保护追踪parentId与显式schoolId双关系；没有授权管理能力的人不能通过停用学校移除部门禁止。事实加载器注入管理事务使用的工厂，核对真实绑定EntityManager和集团锁，不能直接比较Spring代理与原生工厂。
+
+W04不新增策略缓存、数据库版本或消息中间件；来源扩展有界并在超限时整项拒绝。真实SQL、源绑定、模板副本、嵌入上限、矩阵页面、文件和异步撤权仍分别在W05—W09完成。本轮独立自动验收不等于用户／团队人工评审。

@@ -9,6 +9,8 @@ import static io.dataease.api.permissions.enterprise.PermissionContract.*;
 
 @RequestMapping("/api/enterprise/v1")
 public interface PermissionManagementApi {
+    @Operation(summary = "预览本集团目标用户的当前策略范围与授权来源")
+    @PostMapping("/permissions/preview") ResultMessage preview(@RequestBody Preview request);
     @Operation(summary = "读取本集团可配置授权的学校与资源元数据")
     @PostMapping("/permissions/catalog") ResultMessage catalog(@RequestBody Catalog request);
     @Operation(summary = "分页读取主体业务规则或同修订的完整学校集合")

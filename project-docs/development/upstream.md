@@ -70,3 +70,11 @@ V46静态构造回调当前FoundationSchema导致冷加载循环的真实缺陷�
 SDK新增PermissionContract／PermissionManagementApi；实现位于enterprise/permission/manage与server，复用4.6／4.7实体及已存在管理能力不变量，不改迁移。ManagementConfiguration增加两个服务及局部严格转换器，ManagementRequestFilter增加五条精确集团路由，EnterpriseAuditEvent补两个类型事件。ManagementExceptionHandler的脱敏范围补permission/server；ManagementTransactions在加锁时refresh集团，防OSIV／会话校验提前加载旧修订。相关两处共享基础改动均保留既有具名回归。
 
 所有原生资源读取沿CoreDatasetGroup及DataVisualizationInfo实体，只取配置元数据和核对归属；不改ChartDataManage、SQL Provider、全局Jackson、Vue或XPack，不更新子模块。新增实际HTTP验收及必需名称，源码摘要纳入新SDK和未提交企业类；230项Java／108项配置流程／66项回执最低门槛必须执行留证。实现、开发者复核及独立复验入口见[单元记录](w04-authorization-commands.md)。
+
+## W04第5—7步核心增量登记（2026-10-09）
+
+SDK权限契约新增Preview请求／POST路径；自研permission领域／事实加载／应用服务及条件配置新增，实现来源预览。ManagementRequestFilter只追加精确preview路径，StrictPermissionJson只追加局部DTO白名单。ResourceOwnershipService的普通VIEW接入同一决策后仍限定同集团METADATA_ONLY空画布；EDIT／EXPORT／DRILL和原生旧业务入口保持拒绝。
+
+ManagementPrivilegeGuard的组织影响集合包含parentId及显式schoolId；MemberManagementService注入已有共享保护器。PermissionFactLoader注入所属工厂并复查事务、当前集团和锁，来源输出增加明确限额。没有修改ChartDataManage、JpaUpdateNonNullAspect、全局Jackson、Vue框架、冻结4.1—4.7或XPack。升级复核SDK调用方、精确过滤器、JPA代理／OSIV、原生资源契约及门禁源码／JAR绑定，详见[决策](w04-permission-decision.md)、[执行](w04-remaining-execution.md)。
+
+验证工具新增独立决策用户流程；完整门禁必须包含新增具名撤权回归及实际旧接口URL，源码摘要包括新增未跟踪测试。整包复用由成功构建源码摘要和JAR摘要证明，不能靠文件mtime或HEAD相同放行。

@@ -28,7 +28,7 @@ public final class MemberManagementService {
     private final GroupAdministrationInvariant invariant;
     private final Clock clock;
     private final ManagementPrivilegeGuard privileges;
-    public MemberManagementService(ManagementTransactions transactions,GroupAdministrationInvariant invariant,Clock clock){this.transactions=transactions;this.invariant=invariant;this.clock=clock;this.privileges=new ManagementPrivilegeGuard(new ManagementAuthority());}
+    public MemberManagementService(ManagementTransactions transactions,GroupAdministrationInvariant invariant,ManagementPrivilegeGuard privileges,Clock clock){this.transactions=transactions;this.invariant=invariant;this.clock=clock;this.privileges=privileges;}
     public PageResult<Map<String,Object>> page(Principal principal,int page,int size){return transactions.group(principal,"MANAGE_MEMBERS",false,(em,tenant)->{
         var members=em.createQuery("select m,u.displayName from EnterpriseTenantMember m,EnterpriseUser u where m.tenantId=:tenant and u.id=m.userId order by m.id",Object[].class)
                 .setParameter("tenant",tenant.getId()).setFirstResult((page-1)*size).setMaxResults(size).getResultList();

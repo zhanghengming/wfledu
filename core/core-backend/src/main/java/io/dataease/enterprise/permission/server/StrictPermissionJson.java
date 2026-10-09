@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 public final class StrictPermissionJson extends AbstractHttpMessageConverter<PermissionContract.Request> {
     private static final Set<Class<?>> RECORDS = Set.of(Subject.class, ResourceScope.class, SchoolScope.class,
             Change.class, CapabilityChange.class, Batch.class, CapabilityBatch.class,
-            Catalog.class, RulesPage.class, CapabilitiesPage.class);
+            Catalog.class, RulesPage.class, CapabilitiesPage.class, Preview.class);
     private final ObjectMapper mapper = new ObjectMapper(JsonFactory.builder()
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(16)

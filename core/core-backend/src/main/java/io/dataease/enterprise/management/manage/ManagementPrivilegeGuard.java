@@ -46,19 +46,20 @@ public final class ManagementPrivilegeGuard {
         if (target == null || target.getTenantId() != tenant
                 || Objects.equals(target.getParentId(), command.parentId())
                 && target.getStatus().name().equals(command.status().name())) return List.of();
-        // Only topology is read for the subtree; no full group user/grant graph is loaded.
-        var rows = em.createQuery("select o.id,o.parentId from EnterpriseOrganization o where o.tenantId=:tenant", Object[].class)
+        // Reverse dependency closure includes both parent paths and explicit school references.
+        var rows = em.createQuery("select o.id,o.parentId,o.schoolId from EnterpriseOrganization o where o.tenantId=:tenant", Object[].class)
                 .setParameter("tenant", tenant).getResultList();
-        Map<Long, List<Long>> children = new HashMap<>();
-        for (var row : rows) if (row[1] != null) children.computeIfAbsent((Long) row[1], ignored -> new ArrayList<>()).add((Long) row[0]);
+        Map<Long, Set<Long>> children = new HashMap<>();
+        for (var row : rows) for (int reference = 1; reference <= 2; reference++)
+            if (row[reference] != null) children.computeIfAbsent((Long) row[reference], ignored -> new HashSet<>()).add((Long) row[0]);
         Set<Long> affected = new HashSet<>();
         var frontier = new ArrayList<Long>(); frontier.add(command.id());
         for (int level = 0; !frontier.isEmpty(); level++) {
             if (level >= 128) throw new DEException(ResultCode.PERMISSION_NO_ACCESS.code(), ResultCode.PERMISSION_NO_ACCESS.message());
             var next = new ArrayList<Long>();
             for (Long id : frontier) {
-                if (!affected.add(id)) throw new DEException(ResultCode.PERMISSION_NO_ACCESS.code(), ResultCode.PERMISSION_NO_ACCESS.message());
-                next.addAll(children.getOrDefault(id, List.of()));
+                if (!affected.add(id)) continue; // A department may refer to the same school through both edges.
+                next.addAll(children.getOrDefault(id, Set.of()));
             }
             frontier = next;
         }

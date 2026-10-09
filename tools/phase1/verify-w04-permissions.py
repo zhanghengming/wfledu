@@ -137,7 +137,9 @@ def main():
     post('pc.resource-cross-forward','permissions/batch',batch(su,'permission-resource-cross-'+run,[{**dashboard,'resourceScope':{'kind':'EXACT','id':rb}}]),admin,70002)
     post('pc.resource-cross-reverse','permissions/batch',batch(sb,'permission-resource-cross-'+run,[dashboard],b),other,70002)
     post('pc.resource-action-write','permissions/batch',batch(su,'permission-resource-'+run,[dashboard]),admin)
-    post('pc.config-is-not-data-decision','resources/read',{'id':resource,'action':'VIEW'},delegate,70001)
+    controlled=post('pc.config-granted-controlled-view','resources/read',{'id':resource,'action':'VIEW'},delegate)
+    proof('pc.controlled-payload-only',controlled['componentData']=='[]' and controlled['canvasStyleData']=='{}' and controlled['tenantId']==a['id'])
+    post('pc.config-never-opens-edit','resources/read',{'id':resource,'action':'EDIT'},delegate,70001)
     # Register native datasets only as controlled synthetic fixtures; public registration belongs to W05.
     ds=post('pc.dataset-id','resources/create',{'name':'Dataset fixture identifier'},admin)['id']
     sql('INSERT INTO core_dataset_group(id,name,node_type) VALUES('+ds+",'Dataset fixture','dataset')")

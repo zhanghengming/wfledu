@@ -26,6 +26,7 @@ public final class PermissionContract {
                             Integer schoolsPageSize) implements Request { }
     public record CapabilitiesPage(Subject subject, Integer pageNum, Integer pageSize,
                                    String expectedEpoch) implements Request { }
+    public record Preview(String userId, String policyKind, String resourceType, String resourceId, String action, String expectedEpoch) implements Request { }
     public record ChangeResult(String operation, String grantId, String version) { }
     public record StoredResult(List<ChangeResult> results, String committedEpoch) { }
     public record BatchResult(List<ChangeResult> results, String committedEpoch, String currentEpoch,
