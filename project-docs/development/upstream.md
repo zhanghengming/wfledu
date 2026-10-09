@@ -64,3 +64,9 @@ V46静态构造回调当前FoundationSchema导致冷加载循环的真实缺陷�
 2026-10-09恢复补充：前述“前端未修改”只指业务存储单元；本次新增package.json的build:distributed:bounded及vite.bounded.config.ts，复用原distributed契约，不改变原脚本／页面／UI框架／SDK／XPack。新增resource-job.py、verify-resource-job.py、build-safe.py，并让Java／存储／装配验证经过同一受限执行器。源码摘要包含未跟踪的受限配置；门禁提升为回执58和资源7组，防止旧或prebuild报告放行。故障及最终容量修订见[恢复记录](resource-safe-recovery.md)，不以候选4GiB额度宣称前端成功。
 
 回执协议整改继续提升为Python60及PowerShell6类协议检查：资源库不输出CLI摘要，机器响应必须是单一JSON对象，原始远程检查与最终回执仍逐字段相等，解析器／测试源码摘要共同绑定。只改变验收工具，不改变公开产品接口或已成功运行包；首轮污染回执拒绝及重新执行证据见恢复记录与最终回执。
+
+## W04第4步源码接点登记（2026-10-09）
+
+SDK新增PermissionContract／PermissionManagementApi；实现位于enterprise/permission/manage与server，复用4.6／4.7实体及已存在管理能力不变量，不改迁移。ManagementConfiguration增加两个服务及局部严格转换器，ManagementRequestFilter增加五条精确集团路由，EnterpriseAuditEvent补两个类型事件。ManagementExceptionHandler的脱敏范围补permission/server；ManagementTransactions在加锁时refresh集团，防OSIV／会话校验提前加载旧修订。相关两处共享基础改动均保留既有具名回归。
+
+所有原生资源读取沿CoreDatasetGroup及DataVisualizationInfo实体，只取配置元数据和核对归属；不改ChartDataManage、SQL Provider、全局Jackson、Vue或XPack，不更新子模块。新增实际HTTP验收及必需名称，源码摘要纳入新SDK和未提交企业类；230项Java／108项配置流程／66项回执最低门槛必须执行留证。实现、开发者复核及独立复验入口见[单元记录](w04-authorization-commands.md)。

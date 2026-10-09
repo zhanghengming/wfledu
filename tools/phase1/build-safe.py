@@ -17,7 +17,8 @@ def source_digest():
     names = set(subprocess.check_output(['git', 'ls-files', '--', 'core', 'sdk'],
                                         cwd=job.SOURCE, text=True).splitlines())
     for base in ['core/core-backend/src/main/java/io/dataease/enterprise',
-                 'core/core-backend/src/test/java/io/dataease/enterprise']:
+                 'core/core-backend/src/test/java/io/dataease/enterprise',
+                 'sdk/api/api-permissions/src/main/java/io/dataease/api/permissions/enterprise']:
         names.update(str(path.relative_to(job.SOURCE)) for path in (job.SOURCE / base).rglob('*.java'))
     names.add('core/core-frontend/vite.bounded.config.ts')
     rows = []

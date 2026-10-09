@@ -49,7 +49,7 @@ class ManagementHttpBoundaryTest {
     private static final ObjectMapper JSON=new ObjectMapper();
     private static final HttpClient HTTP=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     @SpringBootConfiguration @EnableAutoConfiguration
-    @Import({EnterpriseJpaConfiguration.class,FoundationConfiguration.class,ManagementConfiguration.class,IdentityManagementServer.class,GroupManagementServer.class,io.dataease.enterprise.management.server.ResourceOwnershipServer.class,io.dataease.enterprise.management.server.RoleManagementServer.class,
+    @Import({EnterpriseJpaConfiguration.class,FoundationConfiguration.class,ManagementConfiguration.class,IdentityManagementServer.class,GroupManagementServer.class,io.dataease.enterprise.management.server.ResourceOwnershipServer.class,io.dataease.enterprise.management.server.RoleManagementServer.class,io.dataease.enterprise.permission.server.PermissionManagementServer.class,
             CorsConfig.class,GlobalExceptionHandler.class,io.dataease.enterprise.management.server.ManagementExceptionHandler.class,EnterpriseMigrationEvolutionTest.RepositoryConfiguration.class,
             SpringContextUtil.class,InitSqlListener.class,IDUtils.class,SnowFlake.class})
     static class App {
@@ -62,7 +62,7 @@ class ManagementHttpBoundaryTest {
                     io.dataease.dao.auto.entity.DeStandaloneVersion.class.getName(),
                     io.dataease.enterprise.management.persistence.EnterpriseSubject.class.getName(),io.dataease.enterprise.management.persistence.EnterpriseAdminGrant.class.getName(),
                     io.dataease.enterprise.management.persistence.EnterpriseOrgMember.class.getName(),io.dataease.enterprise.management.persistence.EnterpriseRole.class.getName(),
-                    io.dataease.enterprise.management.persistence.EnterpriseRoleAssignment.class.getName(),io.dataease.enterprise.management.persistence.EnterpriseAssignmentSchool.class.getName(),io.dataease.enterprise.management.persistence.EnterpriseResource.class.getName(),io.dataease.dao.auto.entity.DataVisualizationInfo.class.getName());
+                    io.dataease.enterprise.management.persistence.EnterpriseRoleAssignment.class.getName(),io.dataease.enterprise.management.persistence.EnterpriseAssignmentSchool.class.getName(),io.dataease.enterprise.management.persistence.EnterpriseResource.class.getName(),io.dataease.dao.auto.entity.DataVisualizationInfo.class.getName(),io.dataease.dao.auto.entity.CoreDatasetGroup.class.getName(),io.dataease.enterprise.permission.persistence.EnterpriseGrant.class.getName(),io.dataease.enterprise.permission.persistence.EnterpriseGrantSchool.class.getName(),io.dataease.enterprise.permission.persistence.EnterpriseIdempotency.class.getName());
         }
         @Bean DataSource dataSource(){return jdbc.getDataSource();}
         @Bean JdbcTemplate jdbcTemplate(){
@@ -97,7 +97,8 @@ class ManagementHttpBoundaryTest {
         }
     }
     private record Group(String userId,String memberId,String tenantId,String token){@Override public String toString(){return "Synthetic group [credential redacted]";}}
-    private void fixture(String scenario,boolean testBlocked,Consumer<Fixture> check){
+    private void fixture(String scenario,boolean testBlocked,Consumer<Fixture> check){fixture(scenario,testBlocked,1,check);}
+    private void fixture(String scenario,boolean testBlocked,int threads,Consumer<Fixture> check){
         jdbc=FoundationMigrationTest.fresh(scenario);PORT.set(0);blocked=new CountDownLatch(1);release=new CountDownLatch(1);
         var previous=SpringContextUtil.getApplicationContext();Path input=null;ConfigurableApplicationContext context=null;
         try(var executor=java.util.concurrent.Executors.newSingleThreadExecutor()){
@@ -109,7 +110,7 @@ class ManagementHttpBoundaryTest {
             if(database==null || !database.matches("de_phase1_w03_[a-z]+_[a-f0-9]{12}"))throw new IllegalStateException("Unexpected HTTP test database");
             var future=executor.submit(()->app.run("--spring.config.name=w03_http_test","--spring.main.banner-mode=off","--server.address=127.0.0.1","--server.port=0",
                     "--logging.file.path=/home/data_dev_zhm/dataease-phase1-test/w02-security/logs/http-"+database,
-                    "--server.tomcat.threads.max=1","--server.tomcat.threads.min-spare=1","--spring.jpa.hibernate.ddl-auto=update","--spring.jpa.open-in-view=true",
+                    "--server.tomcat.threads.max="+threads,"--server.tomcat.threads.min-spare=1","--spring.jpa.hibernate.ddl-auto=update","--spring.jpa.open-in-view=true",
                     "--enterprise.foundation.enabled=true","--enterprise.management.enabled=true","--enterprise.management.bootstrap-file="+privateInput,
                     "--dataease.machine-id=30","--logging.level.root=ERROR"));
             boolean reached=false;
@@ -373,6 +374,169 @@ class ManagementHttpBoundaryTest {
         assertThat(w04State(f,a)).isEqualTo(before);
         code(f.post("organizations/save",w04Body(java.util.Map.of("mode","UPDATE","id",school,"expectedVersion","1","kind","SCHOOL","name","School","schoolCode","A1","status","DISABLED")),a.token()),70001);
         assertThat(w04State(f,a)).isEqualTo(before);
+    });}
+
+    private static java.util.Map<String,Object> pSubject(String type,String id) { return java.util.Map.of("type",type,"id",id); }
+    private static java.util.Map<String,Object> pChange(String school) {
+        return java.util.Map.of("operation","UPSERT","policyKind","DATA_ACCESS","resourceType","DATASET",
+                "resourceScope",java.util.Map.of("kind","ALL_DATASETS_IN_TENANT"),"schoolScope",java.util.Map.of("kind","EXPLICIT","ids",java.util.List.of(school)),"action","VIEW","effect","ALLOW");
+    }
+    private static String pEpoch(Fixture f,Group g) { return f.jdbc.queryForObject("SELECT access_epoch FROM de_ent_tenant WHERE id=?",Long.class,Long.parseLong(g.tenantId())).toString(); }
+    private static java.util.Map<String,Object> pBatch(Fixture f,Group g,Object subject,String key,Object...changes) {
+        return java.util.Map.of("subject",subject,"expectedEpoch",pEpoch(f,g),"idempotencyKey",key,"changes",java.util.List.of(changes));
+    }
+    private static String pState(Fixture f,Group g) {
+        return w04State(f,g)+":"+f.jdbc.queryForList("SELECT * FROM de_ent_grant WHERE tenant_id=? ORDER BY id",Long.parseLong(g.tenantId()))
+                +":"+f.jdbc.queryForList("SELECT * FROM de_ent_grant_school WHERE tenant_id=? ORDER BY id",Long.parseLong(g.tenantId()))
+                +":"+f.jdbc.queryForList("SELECT id,version,state,CAST(result_metadata AS CHAR) AS result_metadata FROM de_ent_idempotency WHERE tenant_id=? ORDER BY id",Long.parseLong(g.tenantId()))
+                +":"+f.jdbc.queryForList("SELECT * FROM de_ent_subject WHERE tenant_id=? ORDER BY id",Long.parseLong(g.tenantId()))
+                +":"+f.jdbc.queryForList("SELECT * FROM de_ent_admin_grant WHERE tenant_id=? ORDER BY id",Long.parseLong(g.tenantId()));
+    }
+    @Test void w04PermissionNestedJsonRejectsAmbiguityAndBounds(){fixture("httppermjson",false,f->{
+        Group a=f.group(f.operator(),"admina","A");String school=f.school(a,"A1");
+        String body=w04Body(pBatch(f,a,pSubject("USER",a.userId()),"permission-json-key",pChange(school)));
+        for(String invalid:java.util.List.of(body.replace("\"type\":\"USER\"","\"type\":\"USER\",\"tenantId\":\"1\""),
+                body.replace("\"type\":\"USER\"","\"type\":\"USER\",\"type\":\"ORG\""),body.replace("\"ids\":[\""+school+"\"]","\"ids\":null"),
+                body.replace("\"action\":\"VIEW\"","\"action\":1"),body.replace("\"action\":\"VIEW\"","\"action\":null"),body+" {}")) {
+            code(f.post("permissions/batch",invalid,a.token()),10001);
+        }
+        code(f.post("permissions/batch",body.replace("\"ids\":[\""+school+"\"]","\"ids\":[\""+school+"\",\""+school+"\"]"),a.token()),10001);
+        code(f.post("permissions/batch",body.replace("permission-json-key","x"),a.token()),10001);
+        code(f.post("permissions/batch","{\"padding\":\""+"x".repeat(65537)+"\"}",a.token()),10001);
+        try {
+            var request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+f.port()+"/de2api/api/enterprise/v1/permissions/batch"))
+                    .header("Content-Type","application/json").header("Authorization","Bearer "+a.token())
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(body.getBytes(java.nio.charset.StandardCharsets.UTF_16))).build();
+            code(JSON.readTree(HTTP.send(request,HttpResponse.BodyHandlers.ofString()).body()),10001);
+        }catch(Exception failure){throw new AssertionError("UTF8 request boundary verification failed",failure);}
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_grant",Long.class)).isZero();
+    });}
+    @Test void w04PermissionThreeSubjectsReadWithoutWritingAndCreateOrganizationAtomically(){fixture("httppermsubject",false,f->{
+        Group a=f.group(f.operator(),"admina","A");String school=f.school(a,"A1"),role=w04Role(f,a,"rector");
+        long subjects=f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_subject",Long.class);
+        code(f.post("permissions/rules/page",w04Body(java.util.Map.of("subject",pSubject("ORG",school))),a.token()),0);
+        code(f.post("admin-capabilities/page",w04Body(java.util.Map.of("subject",pSubject("ORG",school))),a.token()),0);
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_subject",Long.class)).isEqualTo(subjects);
+        for(var subject:java.util.List.of(pSubject("ORG",school),pSubject("ROLE",role),pSubject("USER",a.userId()))) {
+            code(f.post("permissions/batch",w04Body(pBatch(f,a,subject,"permission-subject-"+subject.get("type"),pChange(school))),a.token()),0);
+            var page=f.post("permissions/rules/page",w04Body(java.util.Map.of("subject",subject)),a.token());code(page,0);
+            assertThat(page.path("data").path("rules").path("records").get(0).path("status").asText()).isEqualTo("ACTIVE");
+        }
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_subject",Long.class)).isEqualTo(subjects+1);
+        var department=f.post("organizations/save",w04Body(java.util.Map.of("mode","CREATE","kind","DEPARTMENT","name","Linked department","schoolId",school,"status","ACTIVE")),a.token());code(department,0);
+        code(f.post("organizations/save",w04Body(java.util.Map.of("mode","UPDATE","id",school,"expectedVersion","1","kind","SCHOOL","name","School","schoolCode","A1","status","DISABLED")),a.token()),0);
+        var dynamic=new java.util.LinkedHashMap<String,Object>(pChange(school));dynamic.put("schoolScope",java.util.Map.of("kind","ALL_ACTIVE_IN_TENANT"));
+        String before=pState(f,a);
+        code(f.post("permissions/batch",w04Body(pBatch(f,a,pSubject("ORG",department.path("data").path("id").asText()),"permission-unavailable-org",dynamic)),a.token()),70002);
+        assertThat(pState(f,a)).isEqualTo(before);
+        var history=f.post("permissions/rules/page",w04Body(java.util.Map.of("subject",pSubject("ORG",school))),a.token());code(history,0);
+        String grant=history.path("data").path("rules").path("records").get(0).path("id").asText();
+        code(f.post("permissions/batch",w04Body(pBatch(f,a,pSubject("ORG",school),"permission-disabled-cleanup",java.util.Map.of("operation","DELETE","grantId",grant,"expectedVersion","1"))),a.token()),0);
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_grant WHERE id=?",Long.class,Long.parseLong(grant))).isZero();
+    });}
+    @Test void w04PermissionResourceCatalogRequiresNativeOwnershipAndNeverReturnsData(){fixture("httppermcatalog",false,f->{
+        Group a=f.group(f.operator(),"admina","A");String school=f.school(a,"A1");
+        f.jdbc.update("INSERT INTO core_dataset_group(id,name,node_type) VALUES(991,'Dataset','dataset'),(992,'Folder','folder'),(993,'Unregistered','dataset')");
+        f.jdbc.update("INSERT INTO de_ent_resource(id,tenant_id,resource_type,status) VALUES(991,?,'DATASET','ACTIVE'),(992,?,'DATASET','ACTIVE'),(994,?,'DATASET','ACTIVE')",Long.parseLong(a.tenantId()),Long.parseLong(a.tenantId()),Long.parseLong(a.tenantId()));
+        var subject=pSubject("USER",a.userId());
+        var cat=f.post("permissions/catalog",w04Body(java.util.Map.of("subject",subject,"resourceType","DATASET")),a.token());code(cat,0);
+        assertThat(cat.path("data").path("resources").path("records").size()).isEqualTo(1);
+        assertThat(cat.path("data").toString()).doesNotContain("union_sql","info","componentData");
+        for(String id:java.util.List.of("991","992","993","994")) {
+            var change=new java.util.LinkedHashMap<String,Object>(pChange(school));change.put("resourceScope",java.util.Map.of("kind","EXACT","id",id));
+            code(f.post("permissions/batch",w04Body(pBatch(f,a,subject,"permission-dataset-"+id,change)),a.token()),id.equals("991")?0:70002);
+        }
+        code(f.post("permissions/catalog",w04Body(java.util.Map.of("subject",subject,"resourceType","DATASET","keyword","%_")),a.token()),0);
+    });}
+    @Test void w04PermissionBothGroupDirectionsAndMixedBatchAreRejected(){fixture("httppermcross",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B");String sa=f.school(a,"A1"),sb=f.school(b,"B1");
+        for(var pair:java.util.List.of(java.util.List.of(a,b),java.util.List.of(b,a))) {
+            Group own=pair.get(0),foreign=pair.get(1);String school=own==a?sa:sb,other=own==a?sb:sa;
+            String before=pState(f,own);
+            code(f.post("permissions/batch",w04Body(pBatch(f,own,pSubject("USER",foreign.userId()),"permission-foreign-user",pChange(school))),own.token()),70002);
+            code(f.post("permissions/batch",w04Body(pBatch(f,own,pSubject("USER",own.userId()),"permission-foreign-school",pChange(other))),own.token()),70002);
+            var second=new java.util.LinkedHashMap<String,Object>(pChange(other));second.put("effect","DENY");
+            code(f.post("permissions/batch",w04Body(pBatch(f,own,pSubject("USER",own.userId()),"permission-mixed-school",pChange(school),second)),own.token()),70002);
+            code(f.post("admin-capabilities/page",w04Body(java.util.Map.of("subject",pSubject("USER",foreign.userId()))),own.token()),70002);
+            assertThat(pState(f,own)).isEqualTo(before);
+        }
+    });}
+    @Test void w04PermissionDatabaseFailureRollsBackSubjectChildrenEpochAuditIdempotency(){fixture("httppermrollback",false,f->{
+        Group a=f.group(f.operator(),"admina","A");String school=f.school(a,"A1");var body=pBatch(f,a,pSubject("ORG",school),"permission-atomic-retry",pChange(school));String before=pState(f,a);
+        f.jdbc.execute("ALTER TABLE de_ent_grant_school ADD CONSTRAINT ck_w04_command_failure CHECK(id<0)");
+        var failure=f.post("permissions/batch",w04Body(body),a.token());code(failure,40001);
+        assertThat(failure.toString()).doesNotContain("ck_w04_command_failure","Hibernate","INSERT INTO");assertThat(pState(f,a)).isEqualTo(before);
+        f.jdbc.execute("ALTER TABLE de_ent_grant_school DROP CHECK ck_w04_command_failure");
+        code(f.post("permissions/batch",w04Body(body),a.token()),0);
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_idempotency",Long.class)).isEqualTo(1);
+    });}
+    @Test void w04PermissionIdempotencyReplaysOldEpochRejectsChangedExpiredAndRevoked(){fixture("httppermreplay",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A");String school=f.school(a,"A1");
+        Group delegate=w04Delegate(f,root,a,"delegate");w04Grant(f,a,"USER",delegate.memberId(),"MANAGE_AUTHORIZATION","ALLOW");
+        var subject=pSubject("USER",delegate.userId());var body=pBatch(f,a,subject,"permission-replay-key",pChange(school));
+        var first=f.post("permissions/batch",w04Body(body),delegate.token());code(first,0);String before=pState(f,a);
+        var replay=f.post("permissions/batch",w04Body(body),delegate.token());code(replay,0);assertThat(replay.path("data").path("replayed").asBoolean()).isTrue();assertThat(pState(f,a)).isEqualTo(before);
+        var changed=new java.util.LinkedHashMap<String,Object>(pChange(school));changed.put("effect","DENY");
+        code(f.post("permissions/batch",w04Body(pBatch(f,a,subject,"permission-replay-key",changed)),delegate.token()),50002);
+        code(f.post("permissions/batch",w04Body(pBatch(f,a,subject,"permission-second-key",changed)),delegate.token()),0);
+        replay=f.post("permissions/batch",w04Body(body),delegate.token());code(replay,0);
+        assertThat(replay.path("data").path("committedEpoch").asText()).isEqualTo(first.path("data").path("committedEpoch").asText());
+        assertThat(replay.path("data").path("currentEpoch").asText()).isEqualTo(pEpoch(f,a));
+        f.jdbc.update("UPDATE de_ent_idempotency SET created_at=UTC_TIMESTAMP(6)-INTERVAL 2 DAY,updated_at=UTC_TIMESTAMP(6)-INTERVAL 2 DAY,expires_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE idempotency_key='permission-replay-key'");
+        code(f.post("permissions/batch",w04Body(body),delegate.token()),50002);
+        f.jdbc.update("UPDATE de_ent_admin_grant g JOIN de_ent_subject s ON s.id=g.subject_id SET g.status='DISABLED' WHERE s.member_id=?",Long.parseLong(delegate.memberId()));
+        before=pState(f,a);code(f.post("permissions/batch",w04Body(body),delegate.token()),70001);assertThat(pState(f,a)).isEqualTo(before);
+    });}
+    @Test void w04PermissionCasFullReplacementAndDeleteCreateNaturalKey(){fixture("httppermcas",false,f->{
+        Group a=f.group(f.operator(),"admina","A");String one=f.school(a,"A1"),two=f.school(a,"A2");var subject=pSubject("USER",a.userId());
+        var first=f.post("permissions/batch",w04Body(pBatch(f,a,subject,"permission-first-key",pChange(one))),a.token());code(first,0);String id=first.path("data").path("results").get(0).path("grantId").asText();
+        var change=new java.util.LinkedHashMap<String,Object>(pChange(two));change.put("grantId",id);change.put("expectedVersion","1");
+        code(f.post("permissions/batch",w04Body(pBatch(f,a,subject,"permission-update-key",change)),a.token()),0);
+        assertThat(f.jdbc.queryForList("SELECT school_id FROM de_ent_grant_school WHERE grant_id=?",Long.class,Long.parseLong(id))).containsExactly(Long.parseLong(two));
+        code(f.post("permissions/batch",w04Body(pBatch(f,a,subject,"permission-stale-version",change)),a.token()),50002);
+        change.put("expectedVersion","2");change.put("schoolScope",java.util.Map.of("kind","ALL_ACTIVE_IN_TENANT"));
+        code(f.post("permissions/batch",w04Body(pBatch(f,a,subject,"permission-change-key",change)),a.token()),10001);
+        code(f.post("permissions/batch",w04Body(pBatch(f,a,subject,"permission-duplicate-key",pChange(one))),a.token()),50003);
+        var deleted=java.util.Map.of("operation","DELETE","grantId",id,"expectedVersion","2");
+        code(f.post("permissions/batch",w04Body(pBatch(f,a,subject,"permission-replace-key",deleted,pChange(one))),a.token()),0);
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_grant WHERE id=?",Long.class,Long.parseLong(id))).isZero();
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_grant_school",Long.class)).isEqualTo(1);
+    });}
+    @Test void w04PermissionSchoolsPaginationBindsEpochAndRuleRevision(){fixture("httppermpages",false,f->{
+        Group a=f.group(f.operator(),"admina","A");var ids=new java.util.ArrayList<String>();
+        for(int i=0;i<101;i++){long id=4000+i;f.jdbc.update("INSERT INTO de_ent_org(id,tenant_id,kind,name,school_code,status) VALUES(?,?,'SCHOOL','School',?,'ACTIVE')",id,Long.parseLong(a.tenantId()),"P"+i);ids.add(Long.toString(id));}
+        var subject=pSubject("USER",a.userId());var change=new java.util.LinkedHashMap<String,Object>(pChange(ids.getFirst()));change.put("schoolScope",java.util.Map.of("kind","EXPLICIT","ids",ids));
+        var saved=f.post("permissions/batch",w04Body(pBatch(f,a,subject,"permission-page-key",change)),a.token());code(saved,0);String grant=saved.path("data").path("results").get(0).path("grantId").asText();
+        var page=f.post("permissions/rules/page",w04Body(java.util.Map.of("subject",subject)),a.token());code(page,0);var scope=page.path("data").path("rules").path("records").get(0).path("schoolScope");
+        assertThat(scope.path("ids").size()).isEqualTo(100);assertThat(scope.path("total").asInt()).isEqualTo(101);assertThat(scope.path("complete").asBoolean()).isFalse();
+        var body=new java.util.LinkedHashMap<String,Object>(java.util.Map.of("subject",subject,"grantId",grant,"expectedVersion","1","expectedEpoch",pEpoch(f,a),"schoolsPageNum",2,"schoolsPageSize",100));
+        page=f.post("permissions/rules/page",w04Body(body),a.token());code(page,0);assertThat(page.path("data").path("schools").path("records").size()).isEqualTo(1);assertThat(page.path("data").path("complete").asBoolean()).isFalse();
+        body.put("expectedVersion","2");code(f.post("permissions/rules/page",w04Body(body),a.token()),50002);body.put("expectedVersion","1");body.put("expectedEpoch","1");code(f.post("permissions/rules/page",w04Body(body),a.token()),50002);
+        code(f.post("permissions/rules/page",w04Body(java.util.Map.of("subject",subject,"pageNum",2)),a.token()),10001);
+    });}
+    @Test void w04CapabilityBatchProtectsLastAdministratorAndSeparatesManagementFromData(){fixture("httpcapbatch",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A");Group delegate=w04Delegate(f,root,a,"delegate");
+        var subject=pSubject("USER",a.userId());var grants=f.post("admin-capabilities/page",w04Body(java.util.Map.of("subject",subject)),a.token());code(grants,0);
+        String id="";for(var g:grants.path("data").path("grants").path("records"))if(g.path("capability").asText().equals("MANAGE_AUTHORIZATION"))id=g.path("id").asText();assertThat(id).isNotEmpty();
+        String before=pState(f,a);
+        code(f.post("admin-capabilities/batch",w04Body(pBatch(f,a,subject,"capability-last-admin",java.util.Map.of("operation","DELETE","grantId",id,"expectedVersion","1"))),a.token()),70001);assertThat(pState(f,a)).isEqualTo(before);
+        var grant=java.util.Map.of("operation","UPSERT","capability","MANAGE_AUTHORIZATION","effect","ALLOW","status","ACTIVE");
+        code(f.post("admin-capabilities/batch",w04Body(pBatch(f,a,pSubject("USER",delegate.userId()),"capability-new-admin",grant)),a.token()),0);
+        code(f.post("permissions/rules/page",w04Body(java.util.Map.of("subject",pSubject("USER",delegate.userId()))),delegate.token()),0);
+        var resource=f.post("resources/create","{\"name\":\"Private\"}",a.token());code(resource,0);
+        code(f.post("resources/read",w04Body(java.util.Map.of("id",resource.path("data").path("id").asText(),"action","VIEW")),delegate.token()),70001);
+        code(f.post("admin-capabilities/batch",w04Body(pBatch(f,a,subject,"capability-remove-old",java.util.Map.of("operation","DELETE","grantId",id,"expectedVersion","1"))),delegate.token()),0);
+        code(f.post("admin-capabilities/page",w04Body(java.util.Map.of("subject",subject)),a.token()),70001);
+    });}
+    @Test void w04PermissionConcurrentSameKeyCommitsOnceAndRetryRechecksAuthority(){fixture("httppermconcurrent",false,2,f->{
+        Group a=f.group(f.operator(),"admina","A");String school=f.school(a,"A1");String body=w04Body(pBatch(f,a,pSubject("USER",a.userId()),"permission-concurrent-key",pChange(school)));
+        try(var workers=java.util.concurrent.Executors.newFixedThreadPool(2)){
+            var start=new CountDownLatch(1);var one=workers.submit(()->{start.await();return f.post("permissions/batch",body,a.token());});var two=workers.submit(()->{start.await();return f.post("permissions/batch",body,a.token());});start.countDown();
+            var r1=one.get(20,TimeUnit.SECONDS);var r2=two.get(20,TimeUnit.SECONDS);
+            assertThat(r1.path("code").asInt()).isIn(0,70001);assertThat(r2.path("code").asInt()).isIn(0,70001);assertThat(r1.path("code").asInt()==0||r2.path("code").asInt()==0).isTrue();
+        }catch(Exception failure){throw new AssertionError("Concurrent synthetic request failed",failure);}
+        var retry=f.post("permissions/batch",body,a.token());code(retry,0);assertThat(retry.path("data").path("replayed").asBoolean()).isTrue();
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_grant",Long.class)).isEqualTo(1);assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_grant_school",Long.class)).isEqualTo(1);assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_idempotency",Long.class)).isEqualTo(1);
     });}
 
 }

@@ -42,7 +42,9 @@ public final class ManagementTransactions {
         return execute(em->{
             sessions.requireManagementPrincipal(em,principal);
             var user=em.find(EnterpriseUser.class,access.userId(),LockModeType.PESSIMISTIC_READ);
-            var tenant=em.find(EnterpriseTenant.class,access.tenantId(),write?LockModeType.PESSIMISTIC_WRITE:LockModeType.PESSIMISTIC_READ);
+            var tenant=em.find(EnterpriseTenant.class,access.tenantId());
+            // Session recheck may already have loaded this tenant. Refresh under the lock before comparing its revision.
+            if(tenant!=null)em.refresh(tenant,write?LockModeType.PESSIMISTIC_WRITE:LockModeType.PESSIMISTIC_READ);
             if(user==null || user.getStatus()!=FoundationStatus.ACTIVE || user.getIdentityEpoch()!=access.identityEpoch()
                     || tenant==null || tenant.getStatus()!=FoundationStatus.ACTIVE || tenant.getAccessEpoch()!=access.accessEpoch())throw denied();
             if(capability!=null)authority.require(em,access,capability);return operation.apply(em,tenant);

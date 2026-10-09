@@ -27,7 +27,7 @@ public final class ManagementRequestFilter implements Filter {
     public static final String PRINCIPAL_ATTRIBUTE=ManagementRequestFilter.class.getName()+".principal";
     private static final String PREFIX="/de2api/api/enterprise/v1/";
     private static final Set<String> ROUTES=Set.of("ready","auth/login","auth/password","auth/logout","context/current","context/switch",
-            "tenants/page","tenants/create","users/create","members/page","members/save","organizations/page","organizations/save","organizations/school","resources/create","resources/read","roles/page","roles/save","assignments/page","assignments/save");
+            "tenants/page","tenants/create","users/create","members/page","members/save","organizations/page","organizations/save","organizations/school","resources/create","resources/read","roles/page","roles/save","assignments/page","assignments/save","permissions/catalog","permissions/rules/page","permissions/batch","admin-capabilities/page","admin-capabilities/batch");
     private final ManagementSessionService sessions;
     private final ManagementReadiness readiness;
     private final Set<String> origins;
@@ -62,7 +62,7 @@ public final class ManagementRequestFilter implements Filter {
             if(principal.mustReset() && !path.equals(PREFIX+"auth/password") && !path.equals(PREFIX+"auth/logout"))throw denied();
             request.setAttribute(PRINCIPAL_ATTRIBUTE,principal);
             try(var bridge=ManagementRequestBridge.open(request)) {
-                if(path.startsWith(PREFIX+"members/") || path.startsWith(PREFIX+"organizations/") || path.startsWith(PREFIX+"resources/") || path.startsWith(PREFIX+"roles/") || path.startsWith(PREFIX+"assignments/")) {
+                if(path.startsWith(PREFIX+"members/") || path.startsWith(PREFIX+"organizations/") || path.startsWith(PREFIX+"resources/") || path.startsWith(PREFIX+"roles/") || path.startsWith(PREFIX+"assignments/") || path.startsWith(PREFIX+"permissions/") || path.startsWith(PREFIX+"admin-capabilities/")) {
                     try(var scope=AccessContextHolder.open(resolver.resolveAuthenticated(request))){chain.doFilter(request,response);}
                 } else chain.doFilter(request,response);
             } finally {request.removeAttribute(PRINCIPAL_ATTRIBUTE);}

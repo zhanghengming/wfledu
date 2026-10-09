@@ -7,6 +7,9 @@ import io.dataease.enterprise.management.server.ManagementRequestFilter;
 import io.dataease.enterprise.management.server.ManagementAccessContextResolver;
 import io.dataease.enterprise.management.server.StrictManagementJson;
 import io.dataease.enterprise.management.manage.*;
+import io.dataease.enterprise.permission.manage.PermissionReadService;
+import io.dataease.enterprise.permission.manage.PermissionBatchService;
+import io.dataease.enterprise.permission.server.StrictPermissionJson;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
@@ -48,6 +51,8 @@ public class ManagementConfiguration {
         @Bean PlatformManagementService platformManagementService(ManagementTransactions transactions){return new PlatformManagementService(transactions,Clock.systemUTC());}
         @Bean ResourceOwnershipService resourceOwnershipService(ManagementTransactions transactions){return new ResourceOwnershipService(transactions,Clock.systemUTC());}
         @Bean ManagementPrivilegeGuard managementPrivilegeGuard(ManagementAuthority authority){return new ManagementPrivilegeGuard(authority);}
+        @Bean PermissionReadService permissionReadService(ManagementTransactions transactions){return new PermissionReadService(transactions);}
+        @Bean PermissionBatchService permissionBatchService(ManagementTransactions transactions,GroupAdministrationInvariant invariant){return new PermissionBatchService(transactions,invariant,Clock.systemUTC());}
         @Bean RoleManagementService roleManagementService(ManagementTransactions transactions,GroupAdministrationInvariant invariant,ManagementPrivilegeGuard privileges){return new RoleManagementService(transactions,invariant,privileges,Clock.systemUTC());}
         @Bean MemberManagementService memberManagementService(ManagementTransactions transactions,GroupAdministrationInvariant invariant){return new MemberManagementService(transactions,invariant,Clock.systemUTC());}
         @Bean OrganizationManagementService organizationManagementService(EntityManagerFactory factory,PlatformTransactionManager manager,ManagementSessionService sessions,ManagementAuthority authority,ManagementTransactions transactions,GroupAdministrationInvariant invariant){
@@ -80,7 +85,7 @@ public class ManagementConfiguration {
             registration.setAsyncSupported(false);return registration;
         }
         @Bean WebMvcConfigurer managementJsonConverter(){return new WebMvcConfigurer(){
-            @Override public void extendMessageConverters(List<org.springframework.http.converter.HttpMessageConverter<?>> converters){converters.addFirst(new StrictManagementJson());}
+            @Override public void extendMessageConverters(List<org.springframework.http.converter.HttpMessageConverter<?>> converters){converters.addFirst(new StrictManagementJson());converters.addFirst(new StrictPermissionJson());}
         };}
         private static JpaTransactionManager requireJpa(PlatformTransactionManager manager,EntityManagerFactory factory){
             if(!(manager instanceof JpaTransactionManager jpa) || jpa.getEntityManagerFactory()!=factory)throw new IllegalStateException("Management requires the owning JPA transaction manager");

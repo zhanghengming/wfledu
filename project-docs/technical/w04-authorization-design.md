@@ -1,6 +1,6 @@
 # W04授权实现的技术细化
 
-版本v0.2，2026-10-08。**第2步角色／任职及管理资格变化保护已实现，实际验证状态见[单元记录](../development/w04-role-assignment.md)；其余授权、预览、幂等和存储仍待实施。** 本文记录W04工程决定和社区源码接点，不替代[权限矩阵](../requirements/permission-matrix.md)、[API契约](api-contracts.md)、[字段约束](api-field-constraints.md)和[MySQL字典](mysql8-table-dictionary.md)。任务及证据入口见[W04工作包](../planning/w04-authorization.md)。
+版本v0.3，2026-10-09。**第2步角色／任职、第3步业务授权与幂等存储已交付并复验；第4步授权配置命令已编码并通过最终整包及候选完整门禁，Git交付及独立复验状态见回执，见[第4步记录](../development/w04-authorization-commands.md)。第5步权限求值／预览、第6步完整撤权复查仍待实施。** 本文记录W04工程决定和社区源码接点，不替代[权限矩阵](../requirements/permission-matrix.md)、[API契约](api-contracts.md)、[字段约束](api-field-constraints.md)和[MySQL字典](mysql8-table-dictionary.md)。任务及证据入口见[W04工作包](../planning/w04-authorization.md)。
 
 ## 1. 本次源码事实
 
@@ -101,3 +101,18 @@ W04业务catalog、preview和普通VIEW的DATASET测试夹具必须同时建立�
 W04必要负例包含：学校角色交叉、ORG父级隐式继承、个人禁止仅扣匹配操作、EXPORT无VIEW、假平台角色、跨集团主体／学校／资源、混合批次回滚、同自然键重建、不同内容幂等重放、撤权后重试、通过组织／角色任职提权、最后管理员移除、预览伪造身份及分页跨修订。
 
 W05消费当前AuthorizationDecision并加资源依赖／源绑定／学校字段和执行交付复查；W06加受限模型命令；W07再加用户×App交集；W08用相同API实现配置页；W09贯通任务和文件。授权结果只作内部可信输入，不接受浏览器上传的最终范围或摘要。
+
+
+## 第4步落地契约补充
+
+新增PermissionContract／PermissionManagementApi；permission/server与manage复用既有ManagementTransactions、管理能力和4.6／4.7表。五个精确路由全部开启集团上下文和MANAGE_AUTHORIZATION检查；独立严格嵌套JSON语法不改变旧DTO或社区Jackson。字节严格UTF8、64KiB、深度16与批量边界同时检查。
+
+USER主体使用全局用户ID，经集团成员定位；ORG主体首次写时在本事务创建，读不创建。DATASET的原生实体无orgId，必须依赖已登记的集团归属并存在真实dataset节点。模板／副本校验当前原生对象及侧表关系，不在本步创建W06资源或开放编辑。资源目录只返回元数据，包含状态供配置使用；写入再次核验引用可用性。
+
+列表记录沿现有管理页使用id/version；批量请求grantId引用该id，批量结果使用grantId/version。规则返回schoolScope.kind/ids/total/complete，普通页只返回最多100个显式学校；独立学校页使用grantId/expectedVersion/expectedEpoch/schoolsPageNum/schoolsPageSize，complete仅表示此响应包含全部集合，hasNext表示还有页。三种列表第2页起必填expectedEpoch。
+
+普通UPSERT省略status时ACTIVE；显式null拒绝。管理能力UPSERT仍要求status。自然身份包括schoolScope.kind，更改必须同批DELETE＋新增；已有学校集合完整替换。先验证变更、明确删除flush顺序，CAS写根、学校、一次epoch、最后管理员校验、审计及DONE结果同一事务，失败不留下成功记录。首次ORG主体的事务内插入亦在失败时回滚。
+
+幂等重放仍先鉴权，按集团／用户／操作／键隔离，24小时期限；同摘要返回原commitEpoch及当前epoch，不因旧expectedEpoch重复执行。共享事务加锁后refresh集团实体，避免认证校验先加载的旧实体影响并发判断；旧上下文可被拒绝，随后合法重试读取已提交结果。独立验收及完整门禁详见本轮交付文件；局部回归不能替代整包。
+
+组织引用统一采用分批事实闭包＋OrganizationHierarchy，闭包包含显式schoolId及祖先，避免parentId单路径遗漏集团直属但归属于学校的部门。删除已停用主体历史规则只复核归属及版本，不以重新激活主体作为撤权前提；UPSERT仍要求当前可用。该修复以旧实现失败和新实现通过留证，最终重建包已通过候选完整门禁。

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Reproduce W04 step-3 storage acceptance in the isolated task lab only."""
+import hashlib
 import importlib.util
 import json
 import os
@@ -29,6 +30,29 @@ TABLES = ['de_ent_user', 'de_ent_tenant', 'de_ent_tenant_member', 'de_ent_org',
           'de_ent_grant_school', 'de_ent_idempotency']
 
 
+def authorization_state(database):
+    # Full content fingerprints, not row counts: existing synthetic policies must survive.
+    gate.require(re.fullmatch(r'de_phase1_w03_control_[0-9a-f]{12}', database) is not None,
+                 'WRONG_PRESERVATION_DATABASE')
+    marker = boundary.query('root', 'SELECT marker FROM ' + database + '.w03_test_owner;')
+    gate.require(marker.returncode == 0 and marker.stdout.strip() == 'synthetic-only-retain-no-drop',
+                 'STORAGE_OWNER_MARKER_MISMATCH')
+    state = {}
+    for table in ['de_ent_grant', 'de_ent_grant_school', 'de_ent_idempotency']:
+        columns = boundary.query('root', "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='" +
+                                 database + "' AND TABLE_NAME='" + table + "' ORDER BY ORDINAL_POSITION;")
+        names = columns.stdout.strip().splitlines()
+        gate.require(columns.returncode == 0 and names and 'id' in names and
+                     all(re.fullmatch(r'[a-z][a-z0-9_]*', name) for name in names), 'INVALID_STORAGE_COLUMNS')
+        expression = ','.join("COALESCE(HEX(`" + name + "`),'<NULL>')" for name in names)
+        rows = boundary.query('root', "SELECT SHA2(CONCAT_WS(':'," + expression + "),256) FROM " +
+                              database + '.' + table + ' ORDER BY id;')
+        gate.require(rows.returncode == 0, 'STORAGE_PRESERVATION_READ_FAILED')
+        state[table] = {'rows': len(rows.stdout.splitlines()),
+                        'sha256': hashlib.sha256(rows.stdout.encode('utf-8')).hexdigest()}
+    return state
+
+
 def main():
     gate.require(ROOT == EXPECTED_ROOT and HERE == SOURCE / 'tools/phase1', 'WRONG_STORAGE_TASK_DIRECTORY')
     before = gate.snapshot()
@@ -53,6 +77,7 @@ def main():
         env = os.environ.copy()
         env['JAVA_HOME'] = '/usr/lib/jvm/java-21'
         env['PATH'] = env['JAVA_HOME'] + '/bin:/opt/maven/bin:' + env['PATH']
+        original_policies = authorization_state(database)
         start = time.time()
         command = ['mvn', '-B', '-ntp', '-Dmaven.repo.local=' + str(ROOT / 'm2'),
                    '-f', 'core/core-backend/pom.xml', 'test', '-Pstandalone,enterprise-tests',
@@ -97,10 +122,16 @@ def main():
                   "SELECT TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COALESCE(COLUMN_DEFAULT,'<NULL>'),EXTRA,GENERATION_EXPRESSION FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='" + db +
                   "' AND ((TABLE_NAME='de_ent_grant' AND COLUMN_NAME='resource_key') OR (TABLE_NAME='de_ent_idempotency' AND COLUMN_NAME='principal_key')) ORDER BY TABLE_NAME;",
                   'de_ent_grant\tresource_key\tbigint\tYES\t<NULL>\tSTORED GENERATED\tcoalesce(`resource_id`,0)\nde_ent_idempotency\tprincipal_key\tbigint\tYES\t<NULL>\tSTORED GENERATED\tcoalesce(`user_id`,`app_id`)')
-            check('storage.' + label + '.empty',
-                  'SELECT (SELECT COUNT(*) FROM ' + db + '.de_ent_grant),(SELECT COUNT(*) FROM ' +
-                  db + '.de_ent_grant_school),(SELECT COUNT(*) FROM ' + db + '.de_ent_idempotency);',
-                  '0\t0\t0')
+            if label == 'compatibility':
+                check('storage.compatibility.empty',
+                      'SELECT (SELECT COUNT(*) FROM ' + db + '.de_ent_grant),(SELECT COUNT(*) FROM ' +
+                      db + '.de_ent_grant_school),(SELECT COUNT(*) FROM ' + db + '.de_ent_idempotency);',
+                      '0\t0\t0')
+            else:
+                current_policies = authorization_state(database)
+                gate.require(current_policies == original_policies, 'STORAGE_EXISTING_POLICIES_CHANGED')
+                report['preservedPolicies'] = current_policies
+                report['cases'].append({'id': 'storage.management.preserved', 'status': 'passed'})
             check('storage.' + label + '.history',
                   "SELECT version,success+0 FROM " + db + ".de_standalone_version WHERE version LIKE '4.%' ORDER BY installed_rank;",
                   '\n'.join('4.' + str(n) + '\t1' for n in range(1, 8)))

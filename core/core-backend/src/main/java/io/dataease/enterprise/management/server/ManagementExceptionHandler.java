@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 /** Internal SQL and transaction diagnostics must not be serialized to management clients. */
-@RestControllerAdvice(basePackages="io.dataease.enterprise.management.server")
+@RestControllerAdvice(basePackages={"io.dataease.enterprise.management.server","io.dataease.enterprise.permission.server"})
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @ConditionalOnProperty(name="enterprise.management.enabled",havingValue="true")
 public class ManagementExceptionHandler {

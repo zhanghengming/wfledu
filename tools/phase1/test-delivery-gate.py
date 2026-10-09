@@ -23,7 +23,7 @@ class DeliveryGateTest(unittest.TestCase):
         self.identity = {'head': 'synthetic-head', 'jarSha256': 'synthetic-jar', 'controlRuntime': {'pid': 123}}
         self.run = '12345678-1234-1234-1234-123456789abc'
         checks = {name: {'passed': True, 'cases': count} for name, count in
-                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 60), ('foundation', 25), ('control', 80), ('w04', len(gate.W04_HTTP_CASES)), ('storage', len(gate.STORAGE_CASES)), ('resource', len(gate.RESOURCE_CASES))]}
+                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 66), ('foundation', 25), ('control', 80), ('w04', len(gate.W04_HTTP_CASES)), ('permissions', len(gate.PERMISSION_HTTP_CASES)), ('storage', len(gate.STORAGE_CASES)), ('resource', len(gate.RESOURCE_CASES))]}
         checks['unit']['schemaRegressions'] = sorted(gate.SCHEMA_REGRESSIONS)
         checks['unit']['jpaRegressions'] = sorted(gate.JPA_REGRESSIONS)
         checks['unit']['mappingRegressions'] = sorted(gate.MAPPING_REGRESSIONS)
@@ -36,6 +36,7 @@ class DeliveryGateTest(unittest.TestCase):
         checks['unit']['grantStorageRegressions'] = sorted(gate.GRANT_STORAGE_REGRESSIONS)
         checks['unit']['idempotencyStorageRegressions'] = sorted(gate.IDEMPOTENCY_STORAGE_REGRESSIONS)
         checks['resource'].update(requiredCases=sorted(gate.RESOURCE_CASES), identity=self.identity, runId=self.run)
+        checks['permissions'].update(requiredCases=sorted(gate.PERMISSION_HTTP_CASES), identity=self.identity, runId=self.run)
         checks['storage'].update(requiredCases=sorted(gate.STORAGE_CASES), identity=self.identity, runId=self.run)
         checks['w04'].update(requiredCases=sorted(gate.W04_HTTP_CASES), head='synthetic-head', jarSha256='synthetic-jar', controlRuntime={'pid': 123})
         checks['control'].update(requiredCases=sorted(gate.W03_HTTP_CASES), pid=123, jarSha256='synthetic-jar', head='synthetic-head')
@@ -66,6 +67,10 @@ class DeliveryGateTest(unittest.TestCase):
                          'identity': self.identity,
                          'cases': [{'id': name, 'status': 'passed'} for name in sorted(gate.RESOURCE_CASES)]}
         (out / 'resource-verification-results.json').write_text(json.dumps(self.resource))
+
+        self.permissions = {'schemaVersion': 1, 'runId': self.run, 'passed': True, 'identity': self.identity,
+                            'cases': [{'id': name, 'status': 'passed'} for name in sorted(gate.PERMISSION_HTTP_CASES)]}
+        (out / 'w04-step4-http.json').write_text(json.dumps(self.permissions))
 
     def tearDown(self):
         self.temp.cleanup()
@@ -313,8 +318,8 @@ class DeliveryGateTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'CONTROL_RECEIPT_IDENTITY_MISMATCH'): self.verify(report)
 
     def test_high_unit_count_cannot_replace_required_http_methods(self):
-        doc = ET.Element('testsuite', tests='16', failures='0', errors='0', skipped='0')
-        for i in range(16): ET.SubElement(doc, 'testcase', name='unrelated_' + str(i))
+        doc = ET.Element('testsuite', tests=str(gate.UNIT_SUITES['ManagementHttpBoundaryTest']), failures='0', errors='0', skipped='0')
+        for i in range(gate.UNIT_SUITES['ManagementHttpBoundaryTest']): ET.SubElement(doc, 'testcase', name='unrelated_' + str(i))
         with self.assertRaisesRegex(RuntimeError, 'W03_REGRESSION_CASES_MISSING'):
             gate.validate_unit_suite(doc, 'ManagementHttpBoundaryTest')
 
@@ -347,9 +352,9 @@ class DeliveryGateTest(unittest.TestCase):
         report = copy.deepcopy(self.report); report['checks']['unit']['w04Regressions'].pop()
         self.matching_remote(report)
         with self.assertRaisesRegex(RuntimeError, 'W04_REGRESSION_RECEIPT_MISSING'): self.verify(report)
-        doc = ET.Element('testsuite', tests='16', failures='0', errors='0', skipped='0')
+        doc = ET.Element('testsuite', tests=str(gate.UNIT_SUITES['ManagementHttpBoundaryTest']), failures='0', errors='0', skipped='0')
         methods = sorted(case.split('.', 1)[1] for case in gate.W03_REGRESSIONS if case.startswith('ManagementHttpBoundaryTest.'))
-        for name in methods + ['unrelated_' + str(i) for i in range(4)]:
+        for name in methods + ['unrelated_' + str(i) for i in range(gate.UNIT_SUITES['ManagementHttpBoundaryTest'] - len(methods))]:
             ET.SubElement(doc, 'testcase', name=name)
         with self.assertRaisesRegex(RuntimeError, 'W04_REGRESSION_CASES_MISSING'):
             gate.validate_unit_suite(doc, 'ManagementHttpBoundaryTest')
@@ -456,6 +461,36 @@ class DeliveryGateTest(unittest.TestCase):
         report = copy.deepcopy(self.resource); report['prebuild'] = True
         (self.root / 'logs' / ('delivery-' + self.run) / 'resource-verification-results.json').write_text(json.dumps(report))
         with self.assertRaisesRegex(RuntimeError, 'RESOURCE_NOT_PASSED'): self.verify(self.report)
+
+
+
+    def test_permission_configuration_cannot_be_omitted(self):
+        report = copy.deepcopy(self.report); report['checks'].pop('permissions'); self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'): self.verify(report)
+
+    def test_permission_configuration_required_cases_cannot_be_replaced_by_counts(self):
+        report = copy.deepcopy(self.report); report['checks']['permissions']['requiredCases'].pop(); self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'PERMISSION_CASE_RECEIPT_MISSING'): self.verify(report)
+
+    def test_permission_configuration_old_identity_rejected(self):
+        data = copy.deepcopy(self.permissions); data['identity'] = {'head': 'old'}
+        with self.assertRaisesRegex(RuntimeError, 'PERMISSION_RECEIPT_IDENTITY_MISMATCH'): gate.validate_permission_report(data, self.identity)
+
+    def test_permission_configuration_missing_or_failed_case_rejected(self):
+        for change in ['missing', 'failed', 'duplicate']:
+            data = copy.deepcopy(self.permissions)
+            if change == 'missing': data['cases'].pop()
+            elif change == 'failed': data['cases'][0]['status'] = 'failed'
+            else: data['cases'].append(data['cases'][0])
+            with self.assertRaisesRegex(RuntimeError, 'PERMISSION_CASES_MISSING_OR_FAILED'): gate.validate_permission_report(data, self.identity)
+
+    def test_permission_configuration_failed_report_rejected(self):
+        data = copy.deepcopy(self.permissions); data['passed'] = False
+        with self.assertRaisesRegex(RuntimeError, 'PERMISSION_NOT_PASSED'): gate.validate_permission_report(data, self.identity)
+
+    def test_permission_configuration_run_id_mismatch_rejected(self):
+        report = copy.deepcopy(self.report); report['checks']['permissions']['runId'] = 'another-run'; self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'PERMISSION_RUN_ID_MISMATCH'): self.verify(report)
 
 
 if __name__ == '__main__':
