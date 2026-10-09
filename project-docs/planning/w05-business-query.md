@@ -1,6 +1,6 @@
 # W05：集团业务数据库、学校绑定与受控查询工作包
 
-2026-10-09。状态：源码核对后的实施清单，尚未编码或验收。进入条件是[连续实施清单](w05-w10-continuous.md)中的W08基础管理闭环通过整合门槛；不能以正在构建的包视为通过。业务主出处为[PRD](../requirements/prd.md)、[权限矩阵](../requirements/permission-matrix.md)、[验收](../requirements/acceptance.md)。本包同时实施W09中与查询相关的撤权检查。
+2026-10-09。状态：W08基础管理门槛及独立交付后复验已通过，正在步骤5.1；W05尚未编码或验收。进入条件是[连续实施清单](w05-w10-continuous.md)中的W08基础管理闭环通过整合门槛；不能以正在构建的包视为通过。业务主出处为[PRD](../requirements/prd.md)、[权限矩阵](../requirements/permission-matrix.md)、[验收](../requirements/acceptance.md)。本包同时实施W09中与查询相关的撤权检查。
 
 ## 业务闭环和边界
 
@@ -46,3 +46,5 @@
 W04的PermissionDecisionService/FactLoader已经输出当前用户、集团修订、资源修订及学校允许减禁止，预览仍明确`executionReady=false`。只有源、学校字段、完整依赖和真实执行适配均通过后，才允许改变相应执行状态。原管理进程关闭的社区业务接口继续关闭，新入口逐项增加，不能批量开放旧入口来让页面工作。
 
 最终支持结构、SDK字段、迁移编号及查询适配实现须在5.1实际证明后登记到对应技术与数据库文档；此工作包没有将候选接点描述为已经实现。
+
+已核对的源码事实、DDD边界及待证明的候选接点集中在[W05源码审视](../technical/w05-source-review.md)，步骤5.1据此收敛；该记录没有授权自动开放旧接口，也不代替实际MySQL/Handler/交付撤权验证。
