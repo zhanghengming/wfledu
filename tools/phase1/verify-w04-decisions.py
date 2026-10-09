@@ -136,6 +136,34 @@ def main():
     proof('pd.disabled-member-no-policy',not p['authorizationAllowed'])
     for route in ['datasetData/previewData','visualization/save','visualization/findById','chartData/export','link/info','embedded/info','task/page']:
         post('pd.legacy-'+route,'/de2api/'+route,{},admin,70001)
+    # Follow-up defects: revocation of an inactive identity and native template dependencies.
+    sql("UPDATE de_ent_user SET status='DISABLED',identity_epoch=identity_epoch+1 WHERE id="+uid)
+    revoked={'mode':'UPDATE','id':member['id'],'expectedVersion':'4','userId':uid,'status':'DISABLED','organizationIds':[]}
+    post('repair.member-foreign','members/save',revoked,other,70002)
+    post('repair.member-revoke','members/save',revoked,admin)
+    proof('repair.member-persisted',sql('SELECT CONCAT(status,":",version) FROM de_ent_tenant_member WHERE id='+member['id'])=='DISABLED:5')
+    post('repair.member-cas','members/save',revoked,admin,50002)
+    post('repair.member-no-reactivate','members/save',{**revoked,'expectedVersion':'5','status':'ACTIVE'},admin,70002)
+    post('repair.member-old-session','context/current',{},viewer,20001)
+    parent=post('repair.template-create','resources/create',{'name':'Synthetic template dependency'},admin)['id']
+    copy=post('repair.copy-create','resources/create',{'name':'Synthetic school copy'},admin)['id']
+    sql("UPDATE de_ent_resource SET resource_kind='TEMPLATE' WHERE id="+parent)
+    sql("UPDATE de_ent_resource SET resource_kind='SCHOOL_COPY',parent_resource_id="+parent+",school_id="+s1+" WHERE id="+copy)
+    saved=grant('repair.copy-grant','USER',au,[rule(copy,type='SCHOOL_COPY',scope='EXPLICIT',schools=[s1])])
+    p=preview('repair.copy-healthy',copy,type='SCHOOL_COPY',target=au)
+    proof('repair.copy-healthy-policy',p['authorizationAllowed'] and p['allowedSchoolIds']==[s1] and p['executionReady'] is False)
+    for label,fragment in [('deleted','delete_flag=1'),('foreign','org_id='+b['id']),('folder',"node_type='folder'")]:
+        sql('UPDATE data_visualization_info SET '+fragment+' WHERE id='+parent)
+        before=sql('SELECT CONCAT(version,":",access_epoch) FROM de_ent_tenant WHERE id='+a['id'])
+        preview('repair.template-'+label,copy,type='SCHOOL_COPY',target=au,expected=70002)
+        body={'subject':{'type':'USER','id':au},'expectedEpoch':epoch(),'idempotencyKey':'repair-template-'+label+'-'+run,'changes':[rule(copy,type='SCHOOL_COPY',scope='EXPLICIT',schools=[s1],action='EXPORT')]}
+        post('repair.template-'+label+'-grant','permissions/batch',body,admin,70002)
+        proof('repair.template-'+label+'-rollback',sql('SELECT CONCAT(version,":",access_epoch) FROM de_ent_tenant WHERE id='+a['id'])==before and sql("SELECT COUNT(*) FROM de_ent_idempotency WHERE tenant_id="+a['id']+" AND idempotency_key='"+body['idempotencyKey']+"'")=='0')
+        sql("UPDATE data_visualization_info SET delete_flag=0,org_id="+a['id']+",node_type='panel' WHERE id="+parent)
+    preview('repair.copy-foreign-reverse',copy,type='SCHOOL_COPY',target=bu,token=other,expected=70002)
+    sql('DELETE FROM data_visualization_info WHERE id='+parent)
+    preview('repair.template-missing',copy,type='SCHOOL_COPY',target=au,expected=70002)
+    grant('repair.copy-cleanup','USER',au,[{'operation':'DELETE','grantId':saved['results'][0]['grantId'],'expectedVersion':'1'}])
     proof('pd.runtime-unchanged',context.snapshot()==IDENTITY)
 if __name__=='__main__':
     run_id=str(uuid.uuid4());passed=False;error=None

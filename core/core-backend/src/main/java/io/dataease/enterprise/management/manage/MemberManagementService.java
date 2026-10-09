@@ -45,7 +45,8 @@ public final class MemberManagementService {
         return transactions.group(principal,"MANAGE_MEMBERS",true,(em,tenant)->{
             if(tenant.getAccessEpoch()==Long.MAX_VALUE || tenant.getVersion()==Long.MAX_VALUE)throw error(ResultCode.DATA_IS_WRONG);
             var target=em.find(EnterpriseUser.class,command.userId(),jakarta.persistence.LockModeType.PESSIMISTIC_READ);
-            if(target==null || target.getStatus()!=FoundationStatus.ACTIVE)throw error(ResultCode.RESOURCE_NOT_EXIST);
+            // Existing inactive identities remain revocable; activating membership still requires an active user.
+            if(target==null || (command.create() || command.status()==FoundationStatus.ACTIVE) && target.getStatus()!=FoundationStatus.ACTIVE)throw error(ResultCode.RESOURCE_NOT_EXIST);
             for(long org:command.organizationIds())new OrganizationHierarchy(128).requireAvailable(node(em,tenant.getId(),org),id->findNode(em,tenant.getId(),id));
             var privilegeSnapshot=privileges.capture(em,tenant.getId(),List.of(command.userId()));
             long id,version;var now=now();

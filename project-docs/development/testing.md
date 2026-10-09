@@ -140,3 +140,9 @@ GeneratedColumnSchemaTest的10项包含每版本独立类加载器冷加载和�
 PermissionDecisionTest覆盖逐任职学校求交、允许减匹配禁止、VIEW前置、明确平台VIEW、不可变事实、来源预算整项拒绝。ManagementHttpBoundaryTest新增真实MySQL／Servlet用例，覆盖显式学校依赖的间接提权及回滚、撤规则／角色／组织／成员后的旧会话、集团读写锁并发与旧epoch、同线程目标预览后操作者身份及双方向真实旧业务URL拒绝。具名方法及独立HTTP caseId必须加入当前完整门禁；失败不能用数量相同的其他测试代替。
 
 用户可复现流程使用verify-w04-decisions.py；配置与旧基线分别使用verify-w04-permissions.py、verify-w04-roles.py、verify-w03-control.py。阶段及交付后继续执行verify-delivery.ps1，包括实际Java、桌面／移动浏览器、故障检出、迁移／数据库及回执身份一致性；每轮生成新runId。当前步骤和实际证据见[W04连续实施](w04-remaining-execution.md)。
+
+## W04同类缺陷固定回归（2026-10-09）
+
+依据[整改记录](w04-defect-followup.md)，现行最低Java253／25套件、回执拒绝82、决策用户流程107。新增必需方法w04RepairDisabledGlobalUserCanBeRevokedButCannotBeReactivated、w04RepairSchoolCopyChecksNativeTemplateDependencyAndRollsBack；新增23项整包用户流程覆盖停用全局用户撤销／CAS／不可激活及副本模板实际删除／跨集团／类型／缺失／回滚／清理。原有251／76／84是上一轮历史，其他W03/W04必需集合、浏览器8和故障控制3保持。
+
+构建输入由product-inputs.py统一维护；根POM、新SDK及前端源码、资源／Maven配置／锁文件变化必须改变摘要，缺失输入拒绝，明确生成物不纳入。六项构建输入回归已加入工具测试；完整构建与验收不得维护不同清单。Bug必须先命中旧实现目标失败，后测合法／拒绝／状态变化／跨集团和回滚，再整包及交付后独立验收。结果只引用本轮实际回执，不由门槛数量推断通过。

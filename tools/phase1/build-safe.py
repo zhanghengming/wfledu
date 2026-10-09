@@ -13,20 +13,13 @@ job = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(job)
 
 
+input_spec = importlib.util.spec_from_file_location('product_inputs', HERE / 'product-inputs.py')
+inputs = importlib.util.module_from_spec(input_spec)
+input_spec.loader.exec_module(inputs)
+
+
 def source_digest():
-    names = set(subprocess.check_output(['git', 'ls-files', '--', 'core', 'sdk'],
-                                        cwd=job.SOURCE, text=True).splitlines())
-    for base in ['core/core-backend/src/main/java/io/dataease/enterprise',
-                 'core/core-backend/src/test/java/io/dataease/enterprise',
-                 'sdk/api/api-permissions/src/main/java/io/dataease/api/permissions/enterprise']:
-        names.update(str(path.relative_to(job.SOURCE)) for path in (job.SOURCE / base).rglob('*.java'))
-    names.add('core/core-frontend/vite.bounded.config.ts')
-    rows = []
-    for name in sorted(names):
-        if name == 'core/core-frontend/auto-imports.d.ts' or '/resources/static/' in name:
-            continue
-        rows.append(name + ':' + hashlib.sha256((job.SOURCE / name).read_bytes()).hexdigest())
-    return hashlib.sha256('\n'.join(rows).encode()).hexdigest()
+    return inputs.source_digest(job.SOURCE)
 
 
 def main():

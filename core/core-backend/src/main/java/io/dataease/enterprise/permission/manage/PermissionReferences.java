@@ -102,6 +102,8 @@ final class PermissionReferences {
             var parent = em.find(EnterpriseResource.class, owner.getParentResourceId());
             if (parent == null || parent.getTenantId() != tenant || !"TEMPLATE".equals(parent.getResourceKind())
                     || !"DASHBOARD".equals(parent.getResourceType()) || parent.getStatus() != FoundationStatus.ACTIVE) throw missing();
+            // A side-table reference is insufficient: reuse the native resource checks for the actual template.
+            resource(em, tenant, "TEMPLATE", parent.getId());
         }
         return owner;
     }

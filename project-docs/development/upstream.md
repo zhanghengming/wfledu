@@ -78,3 +78,7 @@ SDK权限契约新增Preview请求／POST路径；自研permission领域／事�
 ManagementPrivilegeGuard的组织影响集合包含parentId及显式schoolId；MemberManagementService注入已有共享保护器。PermissionFactLoader注入所属工厂并复查事务、当前集团和锁，来源输出增加明确限额。没有修改ChartDataManage、JpaUpdateNonNullAspect、全局Jackson、Vue框架、冻结4.1—4.7或XPack。升级复核SDK调用方、精确过滤器、JPA代理／OSIV、原生资源契约及门禁源码／JAR绑定，详见[决策](w04-permission-decision.md)、[执行](w04-remaining-execution.md)。
 
 验证工具新增独立决策用户流程；完整门禁必须包含新增具名撤权回归及实际旧接口URL，源码摘要包括新增未跟踪测试。整包复用由成功构建源码摘要和JAR摘要证明，不能靠文件mtime或HEAD相同放行。
+
+## W04同类缺陷整改（2026-10-09）
+
+自研MemberManagementService按命令意图区分ACTIVE与DISABLED的全局身份有效性；PermissionReferences复用TEMPLATE原生校验补齐学校副本依赖。新增两个真实MySQL／HTTP方法和23项完整包用户场景。build-safe与login-test-context共用product-inputs.py，根POM及新增SDK/core文件纳入内容摘要，六项回执负例阻止遗漏。无社区原生接口、数据库版本、依赖或XPack修改；修复设计和最终证据见[整改记录](w04-defect-followup.md)。

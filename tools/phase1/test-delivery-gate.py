@@ -23,7 +23,7 @@ class DeliveryGateTest(unittest.TestCase):
         self.identity = {'head': 'synthetic-head', 'jarSha256': 'synthetic-jar', 'controlRuntime': {'pid': 123}}
         self.run = '12345678-1234-1234-1234-123456789abc'
         checks = {name: {'passed': True, 'cases': count} for name, count in
-                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 76), ('foundation', 25), ('control', 80), ('w04', len(gate.W04_HTTP_CASES)), ('permissions', len(gate.PERMISSION_HTTP_CASES)), ('decisions', len(gate.DECISION_HTTP_CASES)), ('storage', len(gate.STORAGE_CASES)), ('resource', len(gate.RESOURCE_CASES))]}
+                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 82), ('foundation', 25), ('control', 80), ('w04', len(gate.W04_HTTP_CASES)), ('permissions', len(gate.PERMISSION_HTTP_CASES)), ('decisions', len(gate.DECISION_HTTP_CASES)), ('storage', len(gate.STORAGE_CASES)), ('resource', len(gate.RESOURCE_CASES))]}
         checks['unit']['schemaRegressions'] = sorted(gate.SCHEMA_REGRESSIONS)
         checks['unit']['jpaRegressions'] = sorted(gate.JPA_REGRESSIONS)
         checks['unit']['mappingRegressions'] = sorted(gate.MAPPING_REGRESSIONS)
@@ -525,6 +525,66 @@ class DeliveryGateTest(unittest.TestCase):
         report = copy.deepcopy(self.report); report['checks']['decisions']['runId'] = 'another-run'; self.matching_remote(report)
         with self.assertRaisesRegex(RuntimeError, 'DECISION_RUN_ID_MISMATCH'): self.verify(report)
 
+
+    def input_fixture(self):
+        spec = importlib.util.spec_from_file_location('safe_build', Path(__file__).with_name('build-safe.py'))
+        build = importlib.util.module_from_spec(spec); spec.loader.exec_module(build)
+        (self.root / 'pom.xml').write_text('<project/>')
+        (self.root / 'core/core-frontend').mkdir(parents=True)
+        (self.root / 'core/core-frontend/vite.bounded.config.ts').write_text('configuration')
+        (self.root / 'core/tracked.java').write_text('tracked')
+        return build
+
+    def test_root_pom_changes_invalidate_product_build(self):
+        build = self.input_fixture()
+        with patch.object(build.job, 'SOURCE', self.root), patch.object(build.subprocess, 'check_output', return_value='core/tracked.java\n'):
+            previous = build.source_digest()
+            (self.root / 'pom.xml').write_text('<project>changed dependency</project>')
+            self.assertNotEqual(previous, build.source_digest())
+
+    def test_new_shared_sdk_source_invalidates_product_build(self):
+        build = self.input_fixture()
+        with patch.object(build.job, 'SOURCE', self.root), patch.object(build.subprocess, 'check_output', return_value='core/tracked.java\n'):
+            previous = build.source_digest()
+            addition = self.root / 'sdk/common/src/main/java/io/dataease/enterprise/NewContract.java'
+            addition.parent.mkdir(parents=True); addition.write_text('new contract')
+            self.assertNotEqual(previous, build.source_digest())
+
+    def test_new_frontend_source_invalidates_product_build(self):
+        build = self.input_fixture()
+        with patch.object(build.job, 'SOURCE', self.root), patch.object(build.subprocess, 'check_output', return_value='core/tracked.java\n'):
+            previous = build.source_digest()
+            addition = self.root / 'core/core-frontend/src/NewPanel.vue'
+            addition.parent.mkdir(parents=True); addition.write_text('<template>new</template>')
+            self.assertNotEqual(previous, build.source_digest())
+
+    def test_resources_maven_config_and_lockfiles_invalidate_product_build(self):
+        build = self.input_fixture()
+        with patch.object(build.job, 'SOURCE', self.root), patch.object(build.subprocess, 'check_output', return_value='core/tracked.java\n'):
+            for name in ['core/core-backend/src/main/resources/security.yml', 'core/core-frontend/public/logo.png', '.mvn/jvm.config', 'core/core-frontend/package-lock.json', '.npmrc']:
+                previous = build.source_digest(); addition = self.root / name
+                addition.parent.mkdir(parents=True, exist_ok=True); addition.write_text('new input')
+                self.assertNotEqual(previous, build.source_digest())
+
+    def test_missing_tracked_build_input_fails_closed(self):
+        build = self.input_fixture()
+        with patch.object(build.job, 'SOURCE', self.root), patch.object(build.subprocess, 'check_output', return_value='core/deleted.java\n'):
+            with self.assertRaisesRegex(RuntimeError, 'MISSING_PRODUCT_BUILD_INPUT'):
+                build.source_digest()
+        with tempfile.TemporaryDirectory() as outside:
+            target = Path(outside) / 'outside.properties'; target.write_text('outside input')
+            link = self.root / 'core/core-frontend/src/escape.properties'; link.parent.mkdir(parents=True); link.symlink_to(target)
+            with patch.object(build.job, 'SOURCE', self.root), patch.object(build.subprocess, 'check_output', return_value='core/tracked.java\n'):
+                with self.assertRaisesRegex(RuntimeError, 'PRODUCT_BUILD_INPUT_ESCAPES_WORKSPACE'):
+                    build.source_digest()
+
+    def test_generated_files_and_caches_do_not_change_product_inputs(self):
+        build = self.input_fixture()
+        with patch.object(build.job, 'SOURCE', self.root), patch.object(build.subprocess, 'check_output', return_value='core/tracked.java\n'):
+            previous = build.source_digest()
+            for name in ['core/core-backend/target/classes/Fake.java', 'core/core-frontend/node_modules/pkg/index.js', 'core/core-backend/src/main/resources/static/index.html', 'core/core-frontend/auto-imports.d.ts']:
+                addition = self.root / name; addition.parent.mkdir(parents=True, exist_ok=True); addition.write_text('generated')
+            self.assertEqual(previous, build.source_digest())
 
     def build_record(self):
         return {'passed': True, 'state': 'PASSED', 'sourceSha256': 'source', 'jarSha256': 'jar', 'stages': {name: {'passed': True, 'exitCode': 0} for name in ['sdk', 'frontend', 'backend']}}

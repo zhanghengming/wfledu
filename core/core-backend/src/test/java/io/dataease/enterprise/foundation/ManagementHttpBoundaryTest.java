@@ -622,6 +622,45 @@ class ManagementHttpBoundaryTest {
         var page=f.post("roles/page","{}",a.token());code(page,0);assertThat(page.path("data").path("total").asInt()).isZero();
     });}
 
+    @Test void w04RepairDisabledGlobalUserCanBeRevokedButCannotBeReactivated() {fixture("httprepairmember",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B"),u=w04Delegate(f,root,a,"inactive");
+        long id=Long.parseLong(u.userId());
+        f.jdbc.update("UPDATE de_ent_user SET status='DISABLED',identity_epoch=identity_epoch+1 WHERE id=?",id);
+        String before=pState(f,a);
+        code(f.post("members/save",w04Body(java.util.Map.of("mode","CREATE","userId",u.userId(),"status","DISABLED","organizationIds",java.util.List.of())),b.token()),70002);
+        var disabled=java.util.Map.of("mode","UPDATE","id",u.memberId(),"expectedVersion","1","userId",u.userId(),"status","DISABLED","organizationIds",java.util.List.of());
+        code(f.post("members/save",w04Body(disabled),b.token()),70002);assertThat(pState(f,a)).isEqualTo(before);
+        code(f.post("members/save",w04Body(disabled),a.token()),0);
+        assertThat(f.jdbc.queryForObject("SELECT status FROM de_ent_tenant_member WHERE id=?",String.class,Long.parseLong(u.memberId()))).isEqualTo("DISABLED");
+        assertThat(f.jdbc.queryForObject("SELECT version FROM de_ent_tenant_member WHERE id=?",Long.class,Long.parseLong(u.memberId()))).isEqualTo(2);
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_org_member WHERE member_id=?",Long.class,Long.parseLong(u.memberId()))).isZero();
+        code(f.post("context/current","{}",u.token()),20001);
+        before=pState(f,a);
+        code(f.post("members/save",w04Body(java.util.Map.of("mode","UPDATE","id",u.memberId(),"expectedVersion","2","userId",u.userId(),"status","ACTIVE","organizationIds",java.util.List.of())),a.token()),70002);
+        code(f.post("members/save",w04Body(disabled),a.token()),50002);assertThat(pState(f,a)).isEqualTo(before);
+    });}
+    @Test void w04RepairSchoolCopyChecksNativeTemplateDependencyAndRollsBack() {fixture("httprepairtemplate",false,f->{
+        String root=f.operator();Group a=f.group(root,"admina","A"),b=f.group(root,"adminb","B");String school=f.school(a,"A1");
+        String parent=f.post("resources/create",w04Body(java.util.Map.of("name","Template")),a.token()).path("data").path("id").asText();
+        String copy=f.post("resources/create",w04Body(java.util.Map.of("name","Copy")),a.token()).path("data").path("id").asText();
+        f.jdbc.update("UPDATE de_ent_resource SET resource_kind='TEMPLATE' WHERE id=?",Long.parseLong(parent));
+        f.jdbc.update("UPDATE de_ent_resource SET resource_kind='SCHOOL_COPY',parent_resource_id=?,school_id=? WHERE id=?",Long.parseLong(parent),Long.parseLong(school),Long.parseLong(copy));
+        dGrant(f,a,"USER",a.userId(),dRule("SCHOOL_COPY",copy,"VIEW","ALLOW","EXPLICIT",java.util.List.of(school)));
+        assertThat(dPreview(f,a,a.userId(),"SCHOOL_COPY",copy,"VIEW").path("authorizationAllowed").asBoolean()).isTrue();
+        var preview=java.util.Map.of("userId",a.userId(),"policyKind","RESOURCE_ACTION","resourceType","SCHOOL_COPY","resourceId",copy,"action","VIEW");
+        for(String mutation:java.util.List.of("UPDATE data_visualization_info SET delete_flag=1 WHERE id=?","UPDATE data_visualization_info SET org_id="+b.tenantId()+" WHERE id=?","UPDATE data_visualization_info SET node_type='folder' WHERE id=?")) {
+            f.jdbc.update(mutation,Long.parseLong(parent));String before=pState(f,a);
+            code(f.post("permissions/preview",w04Body(preview),a.token()),70002);
+            code(f.post("permissions/batch",w04Body(pBatch(f,a,pSubject("USER",a.userId()),"repair-template-"+java.util.UUID.randomUUID(),dRule("SCHOOL_COPY",copy,"EXPORT","ALLOW","EXPLICIT",java.util.List.of(school)))),a.token()),70002);
+            assertThat(pState(f,a)).isEqualTo(before);
+            f.jdbc.update("UPDATE data_visualization_info SET delete_flag=0,org_id=?,node_type='panel' WHERE id=?",Long.parseLong(a.tenantId()),Long.parseLong(parent));
+        }
+        code(f.post("permissions/preview",w04Body(preview),b.token()),70002);
+        f.jdbc.update("DELETE FROM data_visualization_info WHERE id=?",Long.parseLong(parent));
+        code(f.post("permissions/preview",w04Body(preview),a.token()),70002);
+        var rows=f.post("permissions/rules/page",w04Body(java.util.Map.of("subject",pSubject("USER",a.userId()))),a.token()).path("data").path("rules").path("records");
+        var grant=rows.get(0);code(f.post("permissions/batch",w04Body(pBatch(f,a,pSubject("USER",a.userId()),"repair-invalid-copy-cleanup",java.util.Map.of("operation","DELETE","grantId",grant.path("id").asText(),"expectedVersion",grant.path("version").asText()))),a.token()),0);
+    });}
     @Test void w04RevocationExplicitSchoolDependencyCannotRemoveManagementDeny() {fixture("httprevocationdependency",false,f->{
         String root=f.operator();Group a=f.group(root,"admina","A"),u=w04Delegate(f,root,a,"delegate");String school=f.school(a,"A1");
         var dept=f.post("organizations/save",w04Body(java.util.Map.of("mode","CREATE","kind","DEPARTMENT","name","Linked deny","schoolId",school,"status","ACTIVE")),a.token());code(dept,0);String id=dept.path("data").path("id").asText();
