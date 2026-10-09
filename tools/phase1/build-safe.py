@@ -22,6 +22,20 @@ def source_digest():
     return inputs.source_digest(job.SOURCE)
 
 
+def verify_inputs(record):
+    current = inputs.manifest(job.SOURCE)
+    if current == record['sourceInputs']:
+        return
+    previous_rows = dict(row.rsplit(':', 1) for row in record['sourceInputs'])
+    current_rows = dict(row.rsplit(':', 1) for row in current)
+    record['inputDifferences'] = [
+        {'path': name, 'beforeSha256': previous_rows.get(name), 'afterSha256': current_rows.get(name)}
+        for name in sorted(previous_rows.keys() | current_rows.keys())
+        if previous_rows.get(name) != current_rows.get(name)
+    ]
+    raise RuntimeError('SOURCE_CHANGED_DURING_BUILD')
+
+
 def main():
     if HERE != job.SOURCE / 'tools/phase1':
         raise RuntimeError('WRONG_SAFE_BUILD_DIRECTORY')
@@ -38,9 +52,11 @@ def main():
     run_id = str(uuid.uuid4())
     out = job.ROOT / 'logs' / ('safe-build-' + run_id)
     out.mkdir()
+    source_inputs = inputs.manifest(job.SOURCE)
     record = {'schemaVersion': 1, 'runId': run_id, 'state': 'RUNNING', 'passed': False,
               'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=job.SOURCE, text=True).strip(),
-              'branch': branch, 'sourceSha256': source_digest(), 'startedUnix': time.time(),
+              'branch': branch, 'sourceInputs': source_inputs,
+              'sourceSha256': hashlib.sha256('\n'.join(source_inputs).encode()).hexdigest(), 'startedUnix': time.time(),
               'prebuildRunId': proof['runId'], 'stages': {}}
     latest = job.ROOT / 'logs/safe-build-results.json'
     job.atomic(latest, record)
@@ -50,8 +66,7 @@ def main():
                 ('backend', mvn + ['-f', 'core/core-backend/pom.xml', 'package', '-Pstandalone,enterprise-tests'], job.SOURCE)]
     try:
         for name, command, cwd in commands:
-            if source_digest() != record['sourceSha256']:
-                raise RuntimeError('SOURCE_CHANGED_DURING_BUILD')
+            verify_inputs(record)
             with (out / (name + '.log')).open('wb') as log:
                 result = job.run(name, command, cwd, stdout=log, timeout=1200)
             record['stages'][name] = result
@@ -60,8 +75,7 @@ def main():
             if not result['passed']:
                 raise RuntimeError('BOUNDED_BUILD_STAGE_FAILED_' + name.upper())
             print(name + ': 0', flush=True)
-        if source_digest() != record['sourceSha256']:
-            raise RuntimeError('SOURCE_CHANGED_DURING_BUILD')
+        verify_inputs(record)
         jar = job.SOURCE / 'core/core-backend/target/CoreApplication.jar'
         record.update(state='PASSED', passed=True, jarSha256=hashlib.sha256(jar.read_bytes()).hexdigest())
     except BaseException as error:

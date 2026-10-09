@@ -21,6 +21,7 @@ import { useI18n } from '@/hooks/web/useI18n'
 import { useRequestStoreWithOut } from '@/store/modules/request'
 import { clearCache } from '@/utils/cacheUtil'
 import { securityConfig } from './hmac'
+import { EnterpriseApiError, isManagementPage, isEnterpriseEndpoint } from './enterpriseContext'
 
 type AxiosErrorWidthLoading<T> = T & {
   config: {
@@ -44,7 +45,8 @@ const basePath = import.meta.env.VITE_API_BASEPATH
 
 const embeddedBasePath =
   basePath.startsWith('./') && basePath.length > 2 ? basePath.substring(2) : basePath
-export const PATH_URL = embeddedStore.baseUrl ? embeddedStore?.baseUrl + embeddedBasePath : basePath
+export const PATH_URL =
+  !isManagementPage() && embeddedStore.baseUrl ? embeddedStore.baseUrl + embeddedBasePath : basePath
 
 export interface AxiosInstanceWithLoading extends AxiosInstance {
   <T = any, R = AxiosResponse<T>, D = any>(
@@ -84,7 +86,7 @@ const getTimeOut = () => {
 }
 
 // 创建axios实例
-const time = getTimeOut()
+const time = isManagementPage() ? config.request_timeout / 1000 : getTimeOut()
 window._de_get_time_out = time
 const service: AxiosInstanceWithLoading = axios.create({
   baseURL: PATH_URL, // api 的 base_url
@@ -103,6 +105,20 @@ const cancelMap = {}
 // request拦截器
 service.interceptors.request.use(
   async (c: InternalAxiosRequestConfigWidthLoading<InternalAxiosRequestConfig>) => {
+    if (isManagementPage()) {
+      if (!isEnterpriseEndpoint(c.url) || c.method !== 'post') throw new EnterpriseApiError(70001)
+      const endpoint = new URL(PATH_URL, window.location.href)
+      if (endpoint.origin !== window.location.origin || endpoint.search || endpoint.hash) {
+        throw new EnterpriseApiError(70001)
+      }
+      c.baseURL = PATH_URL
+      // Enterprise credentials are supplied explicitly by the management client.
+      for (const key of ['X-DE-TOKEN', 'X-DE-LINK-TOKEN', 'X-EMBEDDED-TOKEN', 'X-DE-ADMIN-PROXY']) {
+        c.headers.delete(key)
+      }
+      c.headers.set('Accept-Language', mapping[getLocale()] || 'zh-CN')
+      return c
+    }
     let config = configHandler(c)
     if (config instanceof Promise) {
       config = await config
@@ -176,6 +192,10 @@ service.interceptors.response.use(
   (
     response: AxiosResponse<any> & { config: InternalAxiosRequestConfig & { loading?: boolean } }
   ) => {
+    if (isManagementPage()) {
+      if (response.data?.code === 0) return response.data
+      return Promise.reject(new EnterpriseApiError(response.data?.code ?? 60003, response.status))
+    }
     executeVersionHandler(response)
     if (response.headers['x-de-link-token']) {
       linkStore.setLinkToken(response.headers['x-de-link-token'])
@@ -230,6 +250,13 @@ service.interceptors.response.use(
     }
   },
   (error: AxiosErrorWidthLoading<AxiosError>) => {
+    if (isManagementPage()) {
+      if (axios.isCancel(error) || error instanceof EnterpriseApiError) return Promise.reject(error)
+      const body = error.response?.data as { code?: number } | undefined
+      return Promise.reject(
+        new EnterpriseApiError(body?.code ?? 60003, error.response?.status ?? 0)
+      )
+    }
     if (error.message?.includes('timeout of')) {
       requestStore.resetLoadingMap()
       ElMessage({

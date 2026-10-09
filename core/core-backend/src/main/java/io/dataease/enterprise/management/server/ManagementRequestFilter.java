@@ -26,7 +26,7 @@ import java.util.Set;
 public final class ManagementRequestFilter implements Filter {
     public static final String PRINCIPAL_ATTRIBUTE=ManagementRequestFilter.class.getName()+".principal";
     private static final String PREFIX="/de2api/api/enterprise/v1/";
-    private static final Set<String> ROUTES=Set.of("ready","auth/login","auth/password","auth/logout","context/current","context/switch",
+    private static final Set<String> ROUTES=Set.of("ready","auth/login","auth/password","auth/logout","context/current","context/switch","context/navigation","context/tenants",
             "tenants/page","tenants/create","users/create","members/page","members/save","organizations/page","organizations/save","organizations/school","resources/create","resources/read","roles/page","roles/save","assignments/page","assignments/save","permissions/preview","permissions/catalog","permissions/rules/page","permissions/batch","admin-capabilities/page","admin-capabilities/batch");
     private final ManagementSessionService sessions;
     private final ManagementReadiness readiness;
@@ -38,8 +38,9 @@ public final class ManagementRequestFilter implements Filter {
         var request=(HttpServletRequest)input;var response=new ManagementResponse((HttpServletResponse)output);
         response.setHeader("Cache-Control","no-store");response.setHeader("X-Content-Type-Options","nosniff");
         try {
-            String path=request.getRequestURI();
             if(!readiness.ready()){fail(response,503,ResultCode.INTERFACE_REQUEST_TIMEOUT);return;}
+            if(ManagementStaticAssets.serve(request,response,json))return;
+            String path=request.getRequestURI();
             if(!path.startsWith(PREFIX) || path.contains("%") || path.contains(";") || path.contains("\\") || path.contains("//")
                     || !request.getContextPath().isEmpty() || request.getQueryString()!=null || !ROUTES.contains(path.substring(PREFIX.length()))
                     || request.getDispatcherType()!=jakarta.servlet.DispatcherType.REQUEST)throw denied();
@@ -60,6 +61,14 @@ public final class ManagementRequestFilter implements Filter {
             if(authorization.size()!=1 || !authorization.getFirst().matches("Bearer [A-Za-z0-9_-]{43}"))throw unauthenticated();
             var principal=sessions.authenticate(authorization.getFirst().substring(7));
             if(principal.mustReset() && !path.equals(PREFIX+"auth/password") && !path.equals(PREFIX+"auth/logout"))throw denied();
+            var expectedTenant=Collections.list(request.getHeaders("X-DE-Context-Tenant"));
+            var expectedVersion=Collections.list(request.getHeaders("X-DE-Context-Version"));
+            if(!expectedTenant.isEmpty() || !expectedVersion.isEmpty()){
+                if(expectedTenant.size()!=1 || expectedVersion.size()!=1)throw ManagementFields.invalid();
+                long tenant=ManagementFields.id(expectedTenant.getFirst()),version=ManagementFields.id(expectedVersion.getFirst());
+                if(principal.tenantId()==null || principal.tenantId()!=tenant || principal.version()!=version)
+                    throw new DEException(ResultCode.DATA_IS_WRONG.code(),ResultCode.DATA_IS_WRONG.message());
+            }
             request.setAttribute(PRINCIPAL_ATTRIBUTE,principal);
             try(var bridge=ManagementRequestBridge.open(request)) {
                 if(path.startsWith(PREFIX+"members/") || path.startsWith(PREFIX+"organizations/") || path.startsWith(PREFIX+"resources/") || path.startsWith(PREFIX+"roles/") || path.startsWith(PREFIX+"assignments/") || path.startsWith(PREFIX+"permissions/") || path.startsWith(PREFIX+"admin-capabilities/")) {

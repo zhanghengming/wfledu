@@ -49,7 +49,7 @@ class ManagementHttpBoundaryTest {
     private static final ObjectMapper JSON=new ObjectMapper();
     private static final HttpClient HTTP=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     @SpringBootConfiguration @EnableAutoConfiguration
-    @Import({EnterpriseJpaConfiguration.class,FoundationConfiguration.class,ManagementConfiguration.class,IdentityManagementServer.class,GroupManagementServer.class,io.dataease.enterprise.management.server.ResourceOwnershipServer.class,io.dataease.enterprise.management.server.RoleManagementServer.class,io.dataease.enterprise.permission.server.PermissionManagementServer.class,
+    @Import({EnterpriseJpaConfiguration.class,FoundationConfiguration.class,ManagementConfiguration.class,io.dataease.enterprise.management.server.ManagementNavigationServer.class,IdentityManagementServer.class,GroupManagementServer.class,io.dataease.enterprise.management.server.ResourceOwnershipServer.class,io.dataease.enterprise.management.server.RoleManagementServer.class,io.dataease.enterprise.permission.server.PermissionManagementServer.class,
             CorsConfig.class,GlobalExceptionHandler.class,io.dataease.enterprise.management.server.ManagementExceptionHandler.class,EnterpriseMigrationEvolutionTest.RepositoryConfiguration.class,
             SpringContextUtil.class,InitSqlListener.class,IDUtils.class,SnowFlake.class})
     static class App {
@@ -715,6 +715,77 @@ class ManagementHttpBoundaryTest {
             code(f.post("organizations/page","{}",g.token()),0);
         }
         assertThat(io.dataease.enterprise.context.AccessContextHolder.current()).isEmpty();
+    });}
+
+
+    @Test void navigationDiscoversOnlyActiveMembershipsOrQualifiedPlatformGroups(){fixture("httpnavigation",false,f->{
+        f.member();String token=f.login("member","SyntheticPassword-123");
+        var groups=f.post("context/tenants","{}",token);code(groups,0);
+        assertThat(groups.path("data").path("total").asInt()).isEqualTo(1);
+        assertThat(groups.path("data").path("records").get(0).path("id").asText()).isEqualTo("10");
+        code(f.post("context/tenants","{\"userId\":\"1\"}",token),10001);
+        String operator=f.operator();var all=f.post("context/tenants","{}",operator);code(all,0);
+        assertThat(all.path("data").path("total").asInt()).isEqualTo(2);
+        f.jdbc.update("UPDATE de_ent_tenant_member SET status='DISABLED' WHERE id=100");
+        assertThat(f.post("context/tenants","{}",token).path("data").path("total").asInt()).isZero();
+        f.jdbc.update("UPDATE de_ent_tenant SET status='DISABLED' WHERE id=20");
+        assertThat(f.post("context/tenants","{}",operator).path("data").path("total").asInt()).isEqualTo(1);
+    });}
+    @Test void navigationUsesCurrentCapabilitiesAndRevocationRatherThanRoleNames(){fixture("httpnavcaps",false,f->{
+        String operator=f.operator();Group a=f.group(operator,"admina","A");
+        var before=f.post("context/navigation","{}",operator);code(before,0);
+        assertThat(before.path("data").path("tenantId").isNull()).isTrue();
+        assertThat(before.path("data").path("groupCapabilities").size()).isZero();
+        var own=f.post("context/navigation","{}",a.token());code(own,0);
+        assertThat(own.path("data").path("tenantId").asText()).isEqualTo(a.tenantId());
+        assertThat(own.path("data").path("version").isTextual()).isTrue();
+        assertThat(own.path("data").path("accessEpoch").isTextual()).isTrue();
+        assertThat(own.path("data").path("groupCapabilities").size()).isEqualTo(7);
+        assertThat(own.path("data").path("platformCapabilities").size()).isZero();
+        f.jdbc.update("UPDATE de_ent_admin_grant SET status='DISABLED' WHERE tenant_id=? AND capability='MANAGE_ROLES'",Long.parseLong(a.tenantId()));
+        var revoked=f.post("context/navigation","{}",a.token());code(revoked,0);
+        assertThat(revoked.path("data").path("groupCapabilities").toString()).doesNotContain("MANAGE_ROLES");
+        code(f.post("context/switch","{\"tenantId\":\""+a.tenantId()+"\",\"expectedVersion\":\"1\"}",operator),0);
+        var platform=f.post("context/navigation","{}",operator);code(platform,0);
+        assertThat(platform.path("data").path("groupCapabilities").size()).isZero();
+        assertThat(platform.path("data").path("platformCapabilities").size()).isEqualTo(2);
+    });}
+    @Test void expectedContextRejectsOldPageRequestsBeforeAnyMutation(){fixture("httpexpect",false,f->{
+        String operator=f.operator();Group a=f.group(operator,"admina","A");
+        String body="{\"mode\":\"CREATE\",\"code\":\"principal\",\"name\":\"Principal\",\"status\":\"ACTIVE\"}";
+        long epoch=f.jdbc.queryForObject("SELECT access_epoch FROM de_ent_tenant WHERE id=?",Long.class,Long.parseLong(a.tenantId()));
+        code(f.post("roles/save",body,a.token(),"X-DE-Context-Tenant",a.tenantId()),10001);
+        code(f.post("roles/save",body,a.token(),"X-DE-Context-Tenant","999","X-DE-Context-Version","2"),50002);
+        code(f.post("roles/save",body,a.token(),"X-DE-Context-Tenant",a.tenantId(),"X-DE-Context-Version","1"),50002);
+        code(f.post("roles/save",body,a.token(),"X-DE-Context-Tenant",a.tenantId(),"X-DE-Context-Tenant",a.tenantId(),"X-DE-Context-Version","2"),10001);
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_role",Long.class)).isZero();
+        assertThat(f.jdbc.queryForObject("SELECT access_epoch FROM de_ent_tenant WHERE id=?",Long.class,Long.parseLong(a.tenantId()))).isEqualTo(epoch);
+        Group b=f.group(operator,"adminb","B");
+        f.jdbc.update("INSERT INTO de_ent_tenant_member(id,tenant_id,user_id,status) VALUES(900,?,?,'ACTIVE')",Long.parseLong(b.tenantId()),Long.parseLong(a.userId()));
+        code(f.post("context/switch","{\"tenantId\":\""+b.tenantId()+"\",\"expectedVersion\":\"2\"}",a.token()),0);
+        code(f.post("roles/save",body,a.token(),"X-DE-Context-Tenant",a.tenantId(),"X-DE-Context-Version","2"),50002);
+        code(f.post("roles/save",body,a.token(),"X-DE-Context-Tenant",b.tenantId(),"X-DE-Context-Version","3"),70001);
+        code(f.post("context/switch","{\"tenantId\":\""+a.tenantId()+"\",\"expectedVersion\":\"3\"}",a.token()),0);
+        code(f.post("roles/save",body,a.token(),"X-DE-Context-Tenant",a.tenantId(),"X-DE-Context-Version","4"),0);
+        assertThat(f.jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_role",Long.class)).isEqualTo(1);
+    });}
+    @Test void managementStaticBoundaryNeverExposesLegacyOrPrivateRoutes(){fixture("httpstatic",false,f->{
+        try {
+            String base="http://127.0.0.1:"+f.port();
+            var html=HTTP.send(HttpRequest.newBuilder(URI.create(base+"/enterprise.html")).GET().build(),HttpResponse.BodyHandlers.ofString());
+            assertThat(html.statusCode()).isIn(200,404);
+            assertThat(html.headers().firstValue("Content-Security-Policy")).hasValueSatisfying(v->assertThat(v).contains("frame-ancestors 'none'","connect-src 'self'"));
+            assertThat(html.headers().firstValue("Cache-Control")).contains("no-store");
+            for(String path:java.util.List.of("/index.html","/mobile.html","/application.yml","/enterprise.html?tenant=10","/js/../application.yml","/js/%2e%2e/application.yml")){
+                var denied=HTTP.send(HttpRequest.newBuilder(URI.create(base+path)).GET().build(),HttpResponse.BodyHandlers.ofString());
+                assertThat(denied.statusCode()).isBetween(400,499);
+            }
+            var missing=HTTP.send(HttpRequest.newBuilder(URI.create(base+"/js/not-present.js")).GET().build(),HttpResponse.BodyHandlers.ofString());
+            assertThat(missing.statusCode()).isEqualTo(404);
+            var head=HTTP.send(HttpRequest.newBuilder(URI.create(base+"/enterprise.html")).method("HEAD",HttpRequest.BodyPublishers.noBody()).build(),HttpResponse.BodyHandlers.ofString());
+            assertThat(head.statusCode()).isIn(200,404);assertThat(head.body()).isEmpty();
+            assertThat(HTTP.send(HttpRequest.newBuilder(URI.create(base+"/enterprise.html")).POST(HttpRequest.BodyPublishers.ofString("{}")).build(),HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+        } catch(Exception failure){throw new AssertionError("Static boundary failed",failure);}
     });}
 
 }

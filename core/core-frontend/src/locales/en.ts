@@ -1,4 +1,7 @@
+import { managementEn } from './enterprise'
+
 export default {
+  enterprise: managementEn,
   share_visitor: {
     no_permission: 'You do not have this permission',
     title: 'Visitor permissions',

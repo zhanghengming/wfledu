@@ -5,10 +5,14 @@ import type { I18n, I18nOptions } from 'vue-i18n'
 import { setHtmlPageLang } from './helper'
 export let i18n: ReturnType<typeof createI18n>
 import { PATH_URL } from '@/config/axios/service'
+import { isManagementPage } from '@/config/axios/enterpriseContext'
+import { managementMessages } from '@/locales/enterprise'
 const createI18nOptions = async (): Promise<I18nOptions> => {
   const localeStore = useLocaleStoreWithOut()
   let locale = localeStore.getCurrentLocale
-  const localeMap = await localeStore.getLocaleMap
+  const localeMap = isManagementPage()
+    ? localeStore.localeMap.filter(item => ['zh-CN', 'en', 'tw'].includes(item.lang))
+    : await localeStore.getLocaleMap
   const cMap: any = localeMap.find(item => {
     return item.lang === locale.lang
   })
@@ -25,7 +29,9 @@ const createI18nOptions = async (): Promise<I18nOptions> => {
     locale = localeStore.getCurrentLocale
     defaultLocal = await import(`../../locales/${locale.lang}.ts`)
   }
-  const message = defaultLocal.default ?? {}
+  const message = isManagementPage()
+    ? { enterprise: managementMessages[locale.lang] || managementMessages['zh-CN'] }
+    : defaultLocal.default ?? {}
 
   setHtmlPageLang(locale.lang)
 

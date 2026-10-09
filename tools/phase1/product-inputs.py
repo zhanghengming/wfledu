@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 IGNORED_DIRECTORIES = {'target', 'node_modules', 'dist', '.git', '__pycache__'}
-GENERATED = {'core/core-frontend/auto-imports.d.ts'}
+GENERATED = {'core/core-frontend/auto-imports.d.ts', 'core/core-frontend/components.d.ts'}
 ROOT_BUILD_FILES = {'pom.xml', '.npmrc', '.node-version', '.nvmrc', 'package.json', 'package-lock.json'}
 
 

@@ -23,7 +23,7 @@ TOOL_NAMES = ['login-test-context.py', 'browser-login-regression.cjs',
               'verify-delivery.ps1', 'pre-push-check.sh', 'test-delivery-gate.py',
               'remote-json-response.ps1', 'test-remote-json-response.ps1',
               'login-startup-regression.cjs', 'community-compatibility.cjs',
-              'verify-database-boundary.py', 'verify-foundation.py', 'verify-w03-control.py', 'verify-w04-roles.py', 'verify-w04-storage.py', 'resource-job.py', 'verify-resource-job.py', 'build-safe.py', 'verify-w04-permissions.py', 'verify-w04-decisions.py', 'product-inputs.py']
+              'verify-database-boundary.py', 'verify-foundation.py', 'verify-w03-control.py', 'verify-w04-roles.py', 'verify-w04-storage.py', 'resource-job.py', 'verify-resource-job.py', 'build-safe.py', 'verify-w04-permissions.py', 'verify-w04-decisions.py', 'product-inputs.py', 'management-test-context.py', 'browser-management-regression.cjs']
 PROTOCOL_CASES = {'protocol.' + name for name in ['object-single', 'object-multiline',
                   'multiple-objects', 'array-root', 'scalar-root', 'malformed-json']}
 
@@ -185,6 +185,11 @@ input_spec.loader.exec_module(inputs)
 
 DECISION_HTTP_CASES.update({'repair.member-cas', 'repair.template-foreign-grant', 'repair.copy-foreign-reverse', 'repair.copy-create', 'repair.copy-healthy', 'repair.template-foreign', 'repair.template-missing', 'repair.member-revoke', 'repair.template-deleted-rollback', 'repair.template-create', 'repair.template-foreign-rollback', 'repair.template-folder-grant', 'repair.member-no-reactivate', 'repair.template-folder', 'repair.member-old-session', 'repair.copy-healthy-policy', 'repair.copy-cleanup', 'repair.template-deleted-grant', 'repair.template-folder-rollback', 'repair.member-persisted', 'repair.member-foreign', 'repair.copy-grant', 'repair.template-deleted'})
 
+W08_REGRESSIONS = {'ManagementHttpBoundaryTest.navigationDiscoversOnlyActiveMembershipsOrQualifiedPlatformGroups', 'ManagementHttpBoundaryTest.navigationUsesCurrentCapabilitiesAndRevocationRatherThanRoleNames', 'ManagementHttpBoundaryTest.expectedContextRejectsOldPageRequestsBeforeAnyMutation', 'ManagementHttpBoundaryTest.managementStaticBoundaryNeverExposesLegacyOrPrivateRoutes'}
+MANAGEMENT_BROWSER_CASES = {'management.pagination-inflight', 'management.platform-login', 'management.no-management', 'management.role-create', 'management.platform-provision', 'management.group-admin-login', 'management.assignment-school-pairs', 'management.logout', 'management.wrong-password', 'management.member-create', 'management.cross-group-both-directions', 'management.member-update-clear', 'management.cas-conflict', 'management.context-switch-late-response', 'management.organization-create', 'management.organization-update-clear', 'management.reload', 'management.initialization', 'management.mandatory-password-reset', 'management.platform-read-only', 'management.session-expiry'}
+UNIT_SUITES['ManagementHttpBoundaryTest'] = 41
+
+
 def validate_unit_suite(doc, name):
     count = int(doc.attrib['tests'])
     cases = doc.findall('testcase')
@@ -207,6 +212,7 @@ def validate_unit_suite(doc, name):
     require(expected_audit <= observed, 'AUDIT_REGRESSION_CASES_MISSING')
     require({case for case in W03_REGRESSIONS if case.startswith(name + '.')} <= observed, 'W03_REGRESSION_CASES_MISSING')
     require({case for case in W04_REGRESSIONS if case.startswith(name + '.')} <= observed, 'W04_REGRESSION_CASES_MISSING')
+    require({case for case in W08_REGRESSIONS if case.startswith(name + '.')} <= observed, 'W08_REGRESSION_CASES_MISSING')
     require({case for case in GENERATED_REGRESSIONS if case.startswith(name + '.')} <= observed, 'GENERATED_REGRESSION_CASES_MISSING')
     require({case for case in GRANT_STORAGE_REGRESSIONS if case.startswith(name + '.')} <= observed, 'GRANT_STORAGE_CASES_MISSING')
     require({case for case in IDEMPOTENCY_STORAGE_REGRESSIONS if case.startswith(name + '.')} <= observed, 'IDEMPOTENCY_STORAGE_CASES_MISSING')
@@ -244,6 +250,16 @@ def validate_build_binding(build, source_hash, jar_hash):
             and all(isinstance(value, dict) and value.get('passed') is True and value.get('exitCode') == 0 for value in stages.values()), 'PRODUCT_BUILD_STAGE_PROOF_MISSING')
 
 
+MANAGEMENT_FAVICON = 'data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273%27 fill=%27%2318a058%27/%3E%3C/svg%3E'
+
+def packaged_asset_path(entry, url):
+    # The passive inline favicon is covered by the HTML digest; every fetched resource stays packaged.
+    if entry == 'enterprise.html' and url == MANAGEMENT_FAVICON:
+        return None
+    require(url.startswith('./'), 'UNKNOWN_STATIC_ASSET_LAYOUT')
+    return url[2:]
+
+
 def snapshot():
     require(Path(__file__).resolve().parent == TOOLS, 'WRONG_TASK_DIRECTORY')
     pid = int((ROOT / 'runtime/app.pid').read_text())
@@ -271,16 +287,19 @@ def snapshot():
     assets = {}
     entries = {}
     with zipfile.ZipFile(JAR) as archive:
-        for html in ['index.html', 'mobile.html']:
+        for html in ['index.html', 'mobile.html', 'enterprise.html']:
             member = 'BOOT-INF/classes/static/' + html
             contents = archive.read(member)
-            entry = '/' if html == 'index.html' else '/mobile.html'
+            entry = '/' if html == 'index.html' else '/' + html
+            kind = {'index.html': 'desktop', 'mobile.html': 'mobile', 'enterprise.html': 'management'}[html]
             assets[entry] = digest(contents)
-            entries['desktop' if html == 'index.html' else 'mobile'] = [entry]
+            entries[kind] = [entry]
             for url in re.findall(r'(?:src|href)=["\']([^"\']+)["\']', contents.decode()):
-                require(url.startswith('./'), 'UNKNOWN_STATIC_ASSET_LAYOUT')
-                assets['/' + url[2:]] = digest(archive.read('BOOT-INF/classes/static/' + url[2:]))
-                entries['desktop' if html == 'index.html' else 'mobile'].append('/' + url[2:])
+                relative = packaged_asset_path(html, url)
+                if relative is None:
+                    continue
+                assets['/' + relative] = digest(archive.read('BOOT-INF/classes/static/' + relative))
+                entries[kind].append('/' + relative)
     return {
         'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=SOURCE).decode().strip(),
         'jarSha256': jar_hash, 'sourceSha256': source_hash,
@@ -387,6 +406,7 @@ def checks(run_id):
     results['unit']['auditRegressions'] = sorted(AUDIT_REGRESSIONS)
     results['unit']['w03Regressions'] = sorted(W03_REGRESSIONS)
     results['unit']['w04Regressions'] = sorted(W04_REGRESSIONS)
+    results['unit']['w08Regressions'] = sorted(W08_REGRESSIONS)
     results['unit']['generatedRegressions'] = sorted(GENERATED_REGRESSIONS)
     results['unit']['grantStorageRegressions'] = sorted(GRANT_STORAGE_REGRESSIONS)
     results['unit']['idempotencyStorageRegressions'] = sorted(IDEMPOTENCY_STORAGE_REGRESSIONS)
@@ -395,7 +415,7 @@ def checks(run_id):
     results['hmac']['cases'] = 5
     guard_log = (out / 'receiptGuard.log').read_text()
     match = re.search(r'Ran (\d+) tests', guard_log)
-    require(match and int(match.group(1)) >= 82 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
+    require(match and int(match.group(1)) >= 88 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
     results['receiptGuard']['cases'] = int(match.group(1))
     for name, filename, expected in [('api', 'community-api-results.json', 4),
                                      ('database', 'database-boundary-results.json', 14),
@@ -492,6 +512,19 @@ def validate_decision_report(report, identity):
             'DECISION_CASES_MISSING_OR_FAILED')
 
 
+def validate_management_browser(browser, identity, run_id):
+    require(isinstance(browser, dict) and browser.get('schemaVersion') == 1
+            and browser.get('passed') is True and browser.get('runId') == run_id
+            and browser.get('identity') == identity, 'MANAGEMENT_BROWSER_IDENTITY_MISMATCH')
+    cases=browser.get('cases', [])
+    require(len(cases)==len(MANAGEMENT_BROWSER_CASES)
+            and {c.get('id') for c in cases}==MANAGEMENT_BROWSER_CASES
+            and all(c.get('status')=='passed' for c in cases), 'MANAGEMENT_BROWSER_CASES_MISSING_OR_FAILED')
+    require(all(browser.get(k)==[] for k in ['apiErrors','assetErrors','pageErrors','networkErrors','securityErrors']), 'MANAGEMENT_BROWSER_ERRORS_PRESENT')
+    require(any(c.get('path')=='/enterprise.html' and c.get('passed') is True for c in browser.get('assetChecks', []))
+            and all(c.get('passed') is True for c in browser.get('assetChecks', [])), 'MANAGEMENT_BROWSER_ASSETS_NOT_VERIFIED')
+
+
 def verify_gate(head=None):
     path = ROOT / 'logs/delivery-gate.json'
     require(path.is_file(), 'DELIVERY_RECEIPT_MISSING')
@@ -515,7 +548,7 @@ def verify_gate(head=None):
     remote = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'remote-checks.json').read_text())
     require(remote['identity'] == report['identity'] and remote['checks'] == report['checks'],
             'REMOTE_CHECK_RECEIPT_MISMATCH')
-    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 82), ('foundation', 25), ('control', 80), ('w04', len(W04_HTTP_CASES)), ('permissions', len(PERMISSION_HTTP_CASES)), ('decisions', len(DECISION_HTTP_CASES)), ('storage', len(STORAGE_CASES)), ('resource', len(RESOURCE_CASES))]:
+    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 91), ('foundation', 25), ('control', 80), ('w04', len(W04_HTTP_CASES)), ('permissions', len(PERMISSION_HTTP_CASES)), ('decisions', len(DECISION_HTTP_CASES)), ('storage', len(STORAGE_CASES)), ('resource', len(RESOURCE_CASES))]:
         item = report['checks'].get(name, {})
         require(item.get('passed') is True and item.get('cases', 0) >= minimum, 'REQUIRED_CHECK_MISSING')
     require(set(report['checks']['unit'].get('schemaRegressions', [])) == SCHEMA_REGRESSIONS,
@@ -532,6 +565,7 @@ def verify_gate(head=None):
             'AUDIT_REGRESSION_RECEIPT_MISSING')
     require(set(report['checks']['unit'].get('w03Regressions', [])) == W03_REGRESSIONS, 'W03_REGRESSION_RECEIPT_MISSING')
     require(set(report['checks']['unit'].get('w04Regressions', [])) == W04_REGRESSIONS, 'W04_REGRESSION_RECEIPT_MISSING')
+    require(set(report['checks']['unit'].get('w08Regressions', [])) == W08_REGRESSIONS, 'W08_REGRESSION_RECEIPT_MISSING')
     require(set(report['checks']['unit'].get('generatedRegressions', [])) == GENERATED_REGRESSIONS, 'GENERATED_REGRESSION_RECEIPT_MISSING')
     require(set(report['checks']['unit'].get('grantStorageRegressions', [])) == GRANT_STORAGE_REGRESSIONS, 'GRANT_STORAGE_RECEIPT_MISSING')
     require(set(report['checks']['unit'].get('idempotencyStorageRegressions', [])) == IDEMPOTENCY_STORAGE_REGRESSIONS,
@@ -578,6 +612,10 @@ def verify_gate(head=None):
             and all(case.get('status') == 'passed' for case in cases), 'BROWSER_CASES_MISSING_OR_FAILED')
     require(not browser.get('apiErrors') and not browser.get('pageErrors')
             and not browser.get('assetErrors') and not browser.get('networkErrors'), 'BROWSER_ERRORS_PRESENT')
+    management = report.get('managementBrowser')
+    validate_management_browser(management, report['identity'], run_id)
+    original_management = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'management-browser-results.json').read_text())
+    require(original_management == management, 'MANAGEMENT_BROWSER_RECEIPT_MISMATCH')
     negative = report.get('negativeControls', {})
     require(set(negative) == {'unexpected-404', 'loading-mask', 'mobile-submit-blocked'}
             and all(negative.values()), 'NEGATIVE_CONTROLS_MISSING')

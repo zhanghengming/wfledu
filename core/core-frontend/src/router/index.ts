@@ -1,6 +1,8 @@
 import { createRouter, createWebHashHistory } from 'vue-router_2'
 import type { RouteRecordRaw } from 'vue-router_2'
 import type { App } from 'vue'
+import { isManagementPage } from '@/config/axios/enterpriseContext'
+import { enterpriseRoutes } from './enterprise'
 
 export const routes: AppRouteRecordRaw[] = [
   {
@@ -168,7 +170,7 @@ export const routes: AppRouteRecordRaw[] = [
 
 const router = createRouter({
   history: createWebHashHistory(),
-  routes: routes as RouteRecordRaw[]
+  routes: isManagementPage() ? enterpriseRoutes : (routes as RouteRecordRaw[])
 })
 
 export const resetRouter = (): void => {

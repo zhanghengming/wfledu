@@ -23,7 +23,7 @@ class DeliveryGateTest(unittest.TestCase):
         self.identity = {'head': 'synthetic-head', 'jarSha256': 'synthetic-jar', 'controlRuntime': {'pid': 123}}
         self.run = '12345678-1234-1234-1234-123456789abc'
         checks = {name: {'passed': True, 'cases': count} for name, count in
-                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 82), ('foundation', 25), ('control', 80), ('w04', len(gate.W04_HTTP_CASES)), ('permissions', len(gate.PERMISSION_HTTP_CASES)), ('decisions', len(gate.DECISION_HTTP_CASES)), ('storage', len(gate.STORAGE_CASES)), ('resource', len(gate.RESOURCE_CASES))]}
+                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 91), ('foundation', 25), ('control', 80), ('w04', len(gate.W04_HTTP_CASES)), ('permissions', len(gate.PERMISSION_HTTP_CASES)), ('decisions', len(gate.DECISION_HTTP_CASES)), ('storage', len(gate.STORAGE_CASES)), ('resource', len(gate.RESOURCE_CASES))]}
         checks['unit']['schemaRegressions'] = sorted(gate.SCHEMA_REGRESSIONS)
         checks['unit']['jpaRegressions'] = sorted(gate.JPA_REGRESSIONS)
         checks['unit']['mappingRegressions'] = sorted(gate.MAPPING_REGRESSIONS)
@@ -32,6 +32,7 @@ class DeliveryGateTest(unittest.TestCase):
         checks['unit']['auditRegressions'] = sorted(gate.AUDIT_REGRESSIONS)
         checks['unit']['w03Regressions'] = sorted(gate.W03_REGRESSIONS)
         checks['unit']['w04Regressions'] = sorted(gate.W04_REGRESSIONS)
+        checks['unit']['w08Regressions'] = sorted(gate.W08_REGRESSIONS)
         checks['unit']['generatedRegressions'] = sorted(gate.GENERATED_REGRESSIONS)
         checks['unit']['grantStorageRegressions'] = sorted(gate.GRANT_STORAGE_REGRESSIONS)
         checks['unit']['idempotencyStorageRegressions'] = sorted(gate.IDEMPOTENCY_STORAGE_REGRESSIONS)
@@ -56,6 +57,12 @@ class DeliveryGateTest(unittest.TestCase):
         }
         out = self.root / 'logs' / ('delivery-' + self.run)
         out.mkdir(parents=True)
+        self.report['managementBrowser'] = {'schemaVersion': 1, 'runId': self.run, 'identity': self.identity, 'passed': True,
+            'cases': [{'id': name, 'status': 'passed'} for name in sorted(gate.MANAGEMENT_BROWSER_CASES)],
+            'apiErrors': [], 'assetErrors': [], 'pageErrors': [], 'networkErrors': [],
+            'securityErrors': [],
+            'assetChecks': [{'path': '/enterprise.html', 'passed': True}]}
+        (out / 'management-browser-results.json').write_text(json.dumps(self.report['managementBrowser']))
         (out / 'remote-checks.json').write_text(json.dumps(
             {'identity': self.identity, 'checks': checks}))
 
@@ -609,6 +616,49 @@ class DeliveryGateTest(unittest.TestCase):
             elif mode == 'extra': build['stages']['another']={'passed':True,'exitCode':0}
             else: build['stages']=[]
             with self.assertRaisesRegex(RuntimeError, 'PRODUCT_BUILD_STAGE_PROOF_MISSING'): gate.validate_build_binding(build, 'source', 'jar')
+
+
+    def test_missing_management_csp_proof_rejected(self):
+        self.rejected(lambda r:r['managementBrowser'].pop('securityErrors'), 'MANAGEMENT_BROWSER_ERRORS_PRESENT')
+
+    def test_management_csp_failure_cannot_be_hidden_by_passed_cases(self):
+        self.rejected(lambda r:r['managementBrowser']['securityErrors'].append({'code':'CSP_EXECUTION_BLOCKED'}), 'MANAGEMENT_BROWSER_ERRORS_PRESENT')
+
+    def test_only_exact_passive_management_favicon_is_not_a_fetched_asset(self):
+        self.assertIsNone(gate.packaged_asset_path('enterprise.html', gate.MANAGEMENT_FAVICON))
+        self.assertEqual('js/current.js', gate.packaged_asset_path('enterprise.html', './js/current.js'))
+        for entry,url in [('index.html',gate.MANAGEMENT_FAVICON), ('enterprise.html','data:text/javascript,alert(1)'),
+                          ('enterprise.html','https://external.invalid/script.js'), ('enterprise.html','data:image/svg+xml,unverified')]:
+            with self.subTest(entry=entry,url=url), self.assertRaisesRegex(RuntimeError,'UNKNOWN_STATIC_ASSET_LAYOUT'):
+                gate.packaged_asset_path(entry,url)
+
+    def test_management_report_missing(self):
+        self.rejected(lambda r:r.pop('managementBrowser'), 'MANAGEMENT_BROWSER_IDENTITY_MISMATCH')
+    def test_management_failure_cannot_be_hidden(self):
+        self.rejected(lambda r:r['managementBrowser']['cases'][0].update(status='failed'), 'MANAGEMENT_BROWSER_CASES_MISSING_OR_FAILED')
+    def test_management_old_runtime_rejected(self):
+        self.rejected(lambda r:r['managementBrowser'].update(identity={'head':'old'}), 'MANAGEMENT_BROWSER_IDENTITY_MISMATCH')
+    def test_management_unit_names_are_mandatory(self):
+        report=copy.deepcopy(self.report);report['checks']['unit']['w08Regressions'].pop();self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError,'W08_REGRESSION_RECEIPT_MISSING'):self.verify(report)
+
+    def test_generated_component_declarations_do_not_invalidate_product(self):
+        build = self.input_fixture()
+        with patch.object(build.job, 'SOURCE', self.root), patch.object(build.subprocess, 'check_output', return_value='core/tracked.java\n'):
+            previous = build.source_digest()
+            generated = self.root / 'core/core-frontend/components.d.ts'
+            generated.write_text('// Generated by unplugin-vue-components\nexport {}')
+            self.assertEqual(previous, build.source_digest())
+            generated.write_text('// Generated by unplugin-vue-components\nnew generated component declarations')
+            self.assertEqual(previous, build.source_digest())
+
+    def test_handwritten_type_contracts_still_invalidate_product(self):
+        build = self.input_fixture()
+        with patch.object(build.job, 'SOURCE', self.root), patch.object(build.subprocess, 'check_output', return_value='core/tracked.java\n'):
+            previous = build.source_digest()
+            authored = self.root / 'core/core-frontend/management-contract.d.ts'
+            authored.write_text('export interface ManagementContract { tenantId: string }')
+            self.assertNotEqual(previous, build.source_digest())
 
 if __name__ == '__main__':
     unittest.main()

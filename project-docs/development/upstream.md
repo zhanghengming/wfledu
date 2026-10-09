@@ -82,3 +82,11 @@ ManagementPrivilegeGuard的组织影响集合包含parentId及显式schoolId；M
 ## W04同类缺陷整改（2026-10-09）
 
 自研MemberManagementService按命令意图区分ACTIVE与DISABLED的全局身份有效性；PermissionReferences复用TEMPLATE原生校验补齐学校副本依赖。新增两个真实MySQL／HTTP方法和23项完整包用户场景。build-safe与login-test-context共用product-inputs.py，根POM及新增SDK/core文件纳入内容摘要，六项回执负例阻止遗漏。无社区原生接口、数据库版本、依赖或XPack修改；修复设计和最终证据见[整改记录](w04-defect-followup.md)。
+
+## W08基础管理页面接点（2026-10-09，整合验收中）
+
+SDK新增ManagementNavigationApi，核心新增同一管理事务下的集团发现与当前能力投影、受控类路径静态读取。ManagementRequestFilter增加两条精确导航路由和成对上下文预期核对；ManagementTransactions增加当前身份短事务入口，ManagementConfiguration注册新服务。原管理命令独立鉴权及旧业务接口关闭不变，没有迁移、全局Jackson变更或XPack源码/资源。
+
+前端新增enterprise.html、独立Vue/Pinia路由及正式登录、集团、组织、成员、角色任职页面；共享Axios/路由/i18n仅增加企业入口分支。复用原HTTP客户端，管理消息避免CSP下运行时eval，分页加载状态统一约束五处控件。社区主入口、移动入口及React宿主的独立嵌入路线均需按实际影响验证。
+
+product-inputs明确排除自动生成的components.d.ts，同时保留手写声明输入；build-safe记录各阶段输入变化。验收工具绑定管理HTML/脚本/CSS实际包，必跑真实管理页面21项与CSP/捕获异常/分页竞态检查，原社区及W03/W04累计门槛保留。257项Java和定向lint已实际执行；最终新整包/页面/累计门禁及交付后复验以[开发者复核](w08-management-review.md)最新记录为准，不能据本登记宣称整个W08完成。

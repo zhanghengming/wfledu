@@ -1,4 +1,7 @@
+import { managementZh } from './enterprise'
+
 export default {
+  enterprise: managementZh,
   share_visitor: {
     no_permission: '你没有此项权限',
     title: '访客权限',

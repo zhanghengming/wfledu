@@ -48,6 +48,7 @@ public class ManagementConfiguration {
         @Bean ManagementAuthority managementAuthority(){return new ManagementAuthority();}
         @Bean GroupAdministrationInvariant groupAdministrationInvariant(ManagementAuthority authority){return new GroupAdministrationInvariant(authority);}
         @Bean ManagementTransactions managementTransactions(EntityManagerFactory factory,PlatformTransactionManager manager,ManagementSessionService sessions,ManagementAuthority authority){return new ManagementTransactions(factory,requireJpa(manager,factory),sessions,authority);}
+        @Bean ManagementNavigationService managementNavigationService(ManagementTransactions transactions,ManagementAuthority authority){return new ManagementNavigationService(transactions,authority);}
         @Bean PlatformManagementService platformManagementService(ManagementTransactions transactions){return new PlatformManagementService(transactions,Clock.systemUTC());}
         @Bean io.dataease.enterprise.permission.domain.PermissionDecision permissionDecision(){return new io.dataease.enterprise.permission.domain.PermissionDecision();}
         @Bean io.dataease.enterprise.permission.manage.PermissionFactLoader permissionFactLoader(EntityManagerFactory factory){return new io.dataease.enterprise.permission.manage.PermissionFactLoader(factory);}

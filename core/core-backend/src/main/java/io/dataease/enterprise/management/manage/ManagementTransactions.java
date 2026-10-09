@@ -27,6 +27,10 @@ public final class ManagementTransactions {
         if(manager.getEntityManagerFactory()!=factory)throw new IllegalArgumentException("Management transaction factory mismatch");
         this.factory=factory;this.transactions=new TransactionTemplate(manager);transactions.setTimeout(10);this.sessions=sessions;this.authority=authority;
     }
+    /** Authenticated caller metadata discovery; no implied platform or group permission. */
+    public <T>T identity(Principal principal,Function<EntityManager,T> operation){return execute(em->{
+        sessions.requireManagementPrincipal(em,principal);return operation.apply(em);
+    });}
     public <T>T global(Principal principal,String qualification,Function<EntityManager,T> operation){return execute(em->{
         sessions.requireManagementPrincipal(em,principal);
         if(!ManagementSessionService.qualified(em,principal.userId(),qualification))throw denied();return operation.apply(em);

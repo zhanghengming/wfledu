@@ -57,6 +57,24 @@ try {
     $taskPrivateInput = $taskContext | ConvertTo-Json -Depth 12 -Compress
     $taskChecks = Get-TaskJson "--checks $taskRunId"
     Compare-TaskIdentity $taskIdentity $taskChecks.identity
+    $taskManagementForward = '127.0.0.1:18020:127.0.0.1:18120'
+    if (-not ($taskProcesses | Where-Object {
+        $_.CommandLine -match [regex]::Escape($taskManagementForward) -and
+        $_.CommandLine -match 'data_dev_zhm@124\.221\.139\.87'
+    })) { throw 'Verified dedicated management SSH forwarding required.' }
+    $taskManagementJson = & ssh -o BatchMode=yes -o StrictHostKeyChecking=yes data_dev_zhm@124.221.139.87 "python3 -E $taskRemoteRoot/source/tools/phase1/management-test-context.py"
+    if ($LASTEXITCODE -ne 0) { throw 'Management private context rejected.' }
+    $taskManagementContext = ConvertFrom-TaskJsonResponse -Response @($taskManagementJson)
+    Compare-TaskIdentity $taskIdentity $taskManagementContext.identity
+    $taskManagementInput = $taskManagementContext | ConvertTo-Json -Depth 12 -Compress
+    $taskManagementDirectory = Join-Path $taskOutput 'management'
+    $taskManagementInput | & node (Join-Path $PSScriptRoot 'browser-management-regression.cjs') --base-url 'http://127.0.0.1:18020/' --module-path $PlaywrightModulePath --out-dir $taskManagementDirectory --run-id $taskRunId | Write-Host
+    if ($LASTEXITCODE -ne 0) { throw 'Management page acceptance failed.' }
+    $taskManagementFile = Join-Path $taskManagementDirectory 'management-browser-results.json'
+    $taskManagementReport = Get-Content -LiteralPath $taskManagementFile -Raw | ConvertFrom-Json
+    if (-not $taskManagementReport.passed) { throw 'Management page report failed.' }
+    & scp -o BatchMode=yes -o StrictHostKeyChecking=yes $taskManagementFile "data_dev_zhm@124.221.139.87:$taskRemoteRoot/logs/delivery-$taskRunId/management-browser-results.json"
+    if ($LASTEXITCODE -ne 0) { throw 'Management evidence upload failed.' }
     $taskBrowser = Invoke-TaskBrowser '' (Join-Path $taskOutput 'healthy')
     if ($taskBrowser.ExitCode -ne 0 -or -not $taskBrowser.Report.passed) { throw 'Real desktop/mobile browser regression failed.' }
     $taskNegative = @{}
@@ -77,7 +95,7 @@ try {
     Compare-TaskIdentity $taskIdentity $taskAfter.identity
     $taskGate = @{
         schemaVersion = 1; runId = $taskRunId; identity = $taskIdentity; checks = $taskChecks.checks;
-        browser = $taskBrowser.Report; negativeControls = $taskNegative; passed = $true;
+        browser = $taskBrowser.Report; managementBrowser = $taskManagementReport; negativeControls = $taskNegative; passed = $true;
         protocol = $taskProtocol;
         # Browser machine and server clocks can differ; receipt TTL uses the server's clock.
         finishedUnix = $taskAfter.serverUnix
@@ -91,8 +109,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Receipt promotion failed.' }
     $taskVerified = Get-TaskJson '--verify-gate'
     if (-not $taskVerified.passed) { throw 'Delivery receipt rejected.' }
-    Write-Output "Delivery gate PASS: $taskRunId; 8 browser cases and 3 fault controls; dedicated remote checks passed."
+    Write-Output "Delivery gate PASS: $taskRunId; 21 management cases, 8 desktop/mobile cases and 3 fault controls; dedicated remote checks passed."
 } finally {
     # No clipboard access, credential files, HAR, storageState or browser traces.
-    Remove-Variable taskPrivateInput, taskContext -ErrorAction SilentlyContinue
+    Remove-Variable taskPrivateInput, taskContext, taskManagementJson, taskManagementContext, taskManagementInput -ErrorAction SilentlyContinue
 }

@@ -1,4 +1,7 @@
+import { managementTw } from './enterprise'
+
 export default {
+  enterprise: managementTw,
   share_visitor: {
     no_permission: '你沒有此項權限',
     title: '訪客權限',
