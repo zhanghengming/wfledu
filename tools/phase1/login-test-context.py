@@ -21,8 +21,16 @@ TOOLS = SOURCE / 'tools/phase1'
 JAR = SOURCE / 'core/core-backend/target/CoreApplication.jar'
 TOOL_NAMES = ['login-test-context.py', 'browser-login-regression.cjs',
               'verify-delivery.ps1', 'pre-push-check.sh', 'test-delivery-gate.py',
+              'remote-json-response.ps1', 'test-remote-json-response.ps1',
               'login-startup-regression.cjs', 'community-compatibility.cjs',
-              'verify-database-boundary.py', 'verify-foundation.py', 'verify-w03-control.py', 'verify-w04-roles.py']
+              'verify-database-boundary.py', 'verify-foundation.py', 'verify-w03-control.py', 'verify-w04-roles.py', 'verify-w04-storage.py', 'resource-job.py', 'verify-resource-job.py', 'build-safe.py']
+PROTOCOL_CASES = {'protocol.' + name for name in ['object-single', 'object-multiline',
+                  'multiple-objects', 'array-root', 'scalar-root', 'malformed-json']}
+
+
+def protocol_sources():
+    return {name: digest((TOOLS / name).read_bytes()) for name in
+            ['remote-json-response.ps1', 'test-remote-json-response.ps1']}
 
 
 UNIT_SUITES = {'EnterpriseAssemblyGuardTest': 12, 'AccessContextHolderTest': 10,
@@ -132,6 +140,24 @@ UNIT_SUITES.update({'ManagementConfigurationTest': 3, 'ManagementRequestBridgeTe
 W03_REGRESSIONS = set(['AuthorityMigrationTest.authorityDriftRefusesBeforeCreatingRemainingTables', 'AuthorityMigrationTest.committedFirstAuthorityTableFailureRetainsLedgerAndRetries', 'AuthorityMigrationTest.formalThreeStepEmptyPlanKeepsSuccessfulHistoryOnRestart', 'AuthorityMigrationTest.sixTableDescriptorsRemainImmutableAndFullyCommented', 'AuthorityMigrationTest.unknownSubjectTypeAndInvalidCapabilityCannotGrantAuthority', 'AuthorityMigrationTest.v42RowsSurviveRealListenerUpgradeWithoutReexecutingOldSteps', 'CredentialMigrationTest.committedCredentialDdlFailureRetainsFailedLedgerAndRetries', 'CredentialMigrationTest.credentialDriftRefusesBeforeCreatingRemainingTables', 'CredentialMigrationTest.explicitInitializationIsAtomicRestrictedAndCannotRepeat', 'CredentialMigrationTest.failedInitializationRollsBackAccountAndQualifications', 'CredentialMigrationTest.formalFourStepEmptyPlanRetainsHistoryAndProvidesNoCredentials', 'CredentialMigrationTest.privateInputRejectsPermissionsDuplicateKeysAndTrailingJson', 'CredentialMigrationTest.v43RowsSurviveListenerUpgradeWithoutOldStepsRepeating', 'ManagementAuthorityTest.disabledOrganizationAncestorDoesNotConferManagement', 'ManagementAuthorityTest.emptyDisabledOrNonSchoolRoleScopeRejects', 'ManagementAuthorityTest.explicitOrganizationGrantRequiresExactActiveMembership', 'ManagementAuthorityTest.explicitPersonalDenyOverridesOrganizationAllow', 'ManagementAuthorityTest.formalV43UpgradeRetainsRowsRepeatsAndRejectsCrossGroupSubject', 'ManagementAuthorityTest.membershipAndAdministratorRoleNameDoNotGrantManagement', 'ManagementAuthorityTest.missingContextAndMissingTransactionReject', 'ManagementAuthorityTest.otherGroupAndDisabledMemberCannotUseGrants', 'ManagementAuthorityTest.personalGrantEnablesRealOrganizationAndAuditTransaction', 'ManagementAuthorityTest.roleDenyOverridesPersonalAllowWithoutCombiningSchoolSets', 'ManagementAuthorityTest.roleGrantRequiresItsOwnActiveAssignmentAndSchools', 'ManagementAuthorityTest.staleIdentityTenantRevisionAndDisabledUserReject', 'ManagementConfigurationTest.defaultModeSuppliesNoIdentityOrRequestFilter', 'ManagementConfigurationTest.invalidSwitchRejectsBeforeAssembly', 'ManagementConfigurationTest.managementWithoutFoundationAndCombinedFullModeReject', 'ManagementHttpBoundaryTest.credentialsOriginsAndLegacyRoutesCannotBypassProductionFilter', 'ManagementHttpBoundaryTest.groupResourcesAndSchoolReferencesRejectBothDirectionsWithoutMetadata', 'ManagementHttpBoundaryTest.lastAdministratorAndImmutableSchoolAttributionCannotBeRemoved', 'ManagementHttpBoundaryTest.nativeOwnershipFailureRollsBackResourceEpochAndAuditThenRetries', 'ManagementHttpBoundaryTest.nativeOwnershipRequiresSelectedGroupAndNeverGrantsEditing', 'ManagementHttpBoundaryTest.platformQualificationsRemainIndependentAndRevocationIsImmediate', 'ManagementHttpBoundaryTest.realContextSwitchChecksMemberCasAndImmediateRevocation', 'ManagementHttpBoundaryTest.realLoginRefusesDuringMigrationAndOpensOnlyAfterInitialization', 'ManagementHttpBoundaryTest.realOrganizationMemberLifecycleHasAuditCasAndImmediateRevocation', 'ManagementHttpBoundaryTest.realPasswordChangeAndExpiryInvalidateExistingCredentials', 'ManagementHttpBoundaryTest.reusedRealHttpWorkerClearsGroupContextAfterRejectedRequests', 'ManagementHttpBoundaryTest.strictJsonRejectsUnknownDuplicateTypeTrailingAndOversizedBodies', 'ManagementRequestBridgeTest.activeScopeMatchesOnlyTheExactRequestAndClearsAfterException', 'ManagementRequestBridgeTest.headersAndPathsAloneNeverBypassNativeAuthentication', 'ManagementRequestBridgeTest.nestedOrOtherThreadScopesAndNonManagementPathsReject', 'ManagementResponseTest.downstreamCacheOverridesAndResetCannotExposeCredentialsToCaches', 'ManagementSessionTest.concurrentWrongPasswordsAllCountTowardsLock', 'ManagementSessionTest.corruptStoredParametersFailClosedWithoutCreatingSession', 'ManagementSessionTest.fiveFailuresLockAtomicallyAndExpiryRestartsCounter', 'ManagementSessionTest.forcedResetCannotSwitchAndPasswordChangeRevokesEveryOldSession', 'ManagementSessionTest.idleAndAbsoluteExpiryAndLogoutDenyFurtherUse', 'ManagementSessionTest.loginPersistsOnlyDigestAndReturnsUnselectedRestrictedIdentity', 'ManagementSessionTest.malformedTokensCannotSelectAnIdentity', 'ManagementSessionTest.memberSwitchRejectsOtherGroupAndStaleRevision', 'ManagementSessionTest.memberTenantAndIdentityRevocationApplyToExistingSessions', 'ManagementSessionTest.platformAllReadSwitchesWithoutMembershipButDoesNotBecomeOperate', 'ManagementSessionTest.unknownAndDisabledIdentityUseSameLoginErrorWithoutSession', 'PasswordCodecTest.independentSaltAndCorrectComparison', 'PasswordCodecTest.invalidPasswordsAreRejectedBeforeDerivation', 'PasswordCodecTest.malformedOrUnboundedParametersAreNeverAccepted', 'ResourceMigrationTest.committedResourceDdlFailureRetainsFailedLedgerAndSafelyRetries', 'ResourceMigrationTest.exactFiveStepEmptyPlanAndRepeatProvideNoResources', 'ResourceMigrationTest.ownershipConstraintsRejectBothGroupsAndPayloadClaims', 'ResourceMigrationTest.v44DataSurvivesResourceUpgradeWithoutHistoryRewrite'])
 W03_HTTP_CASES = set(['controller.view', 'formal.anonymous', 'formal.fake-group', 'formal.legacy-login', 'formal.login', 'formal.logout', 'formal.logout-replay', 'formal.correct-password-locked', 'formal.expired-session', 'role.personal-deny-overrides', 'role.no-school-cross-product', 'role.B-independent-allow', 'formal.untrusted-origin', 'formal.wrong-password', 'member.cas', 'member.create', 'member.disable', 'member.foreign-update', 'member.immediate-revocation', 'member.last-admin', 'member.list', 'member.no-implicit-management', 'organization.A-to-B', 'organization.B-to-A', 'organization.cas', 'organization.clear', 'organization.empty', 'organization.foreign-parent', 'organization.reopen', 'organization.unknown', 'platform.A-not-B', 'platform.B-not-A', 'platform.no-DRILL', 'platform.no-EDIT', 'platform.no-EXPORT', 'platform.select-A', 'platform.select-B', 'platform.view-A', 'platform.view-B', 'reader.no-platform-control', 'reader.revoked', 'resource.A-create', 'resource.A-to-B', 'resource.B-create', 'resource.B-to-A', 'resource.native-envelope-consistent', 'resource.no-rebind', 'resource.unregistered-native'])
 
+GRANT_STORAGE_REGRESSIONS = set(["GrantStorageTest.sixStepEmptyPlanAndRepeatHaveNoDefaultBusinessGrants","GrantStorageTest.seededV45UpgradeRetainsEveryOldRowAndSuccessfulHistory","GrantStorageTest.committedGrantDdlFailureRetainsLedgerAndResumesMissingSchoolTable","GrantStorageTest.existingExpressionDriftRefusesBeforeCreatingOtherTableAndWithoutRepair","GrantStorageTest.subjectsAndTypedResourcesRejectBothCrossGroupDirections","GrantStorageTest.nullResourceNaturalKeyIsUniqueAndAllowsIndependentDeny","GrantStorageTest.invalidPolicyActionsScopesAndNullableBranchesCannotPassChecks","GrantStorageTest.schoolAssociationsRejectBothForeignDirectionsDuplicatesAndUnknownSchools","GrantStorageTest.jpaGeneratedSlotIsReadOnlyAndNaturalIdentityCannotBeReplaced","GrantStorageTest.jpaCasAndExplicitSchoolClearReloadOutsidePersistenceContext","GrantStorageTest.multiTableFlushFailureRollsBackGrantSchoolsAndTenantRevision","GrantStorageTest.unknownReservedObjectsAndOldFiveStepPlanRejectWithoutChangingHistory"])
+UNIT_SUITES.update({'GrantStorageTest': 12})
+
+IDEMPOTENCY_STORAGE_REGRESSIONS = set(["IdempotencyStorageTest.sevenStepEmptyPlanAndRepeatHaveNoRecordsOrEmbeddedAppDependency","IdempotencyStorageTest.seededV46UpgradeRetainsPolicyRowsAndSuccessfulHistory","IdempotencyStorageTest.committedIdempotencyDdlFailureRetainsLedgerAndRetriesWithoutLosingRows","IdempotencyStorageTest.generationAndDefaultDriftRemainUnrepairedAndFailedHistoryIsPreserved","IdempotencyStorageTest.userOnlyPrincipalOperationsKeysExpiryAndForeignReferencesReject","IdempotencyStorageTest.keyScopeSeparatesGroupUserOperationAndExactCaseWhileDuplicatesReject","IdempotencyStorageTest.doneMetadataRequiresBoundedJsonObjectIncludingUtf8Storage","IdempotencyStorageTest.jpaGeneratedPrincipalIsReadOnlyAndDigestHasExactDefensiveCopies","IdempotencyStorageTest.jpaOptimisticConflictAndManagedExplicitClearArePersistedCorrectly","IdempotencyStorageTest.springTransactionFailureRollsBackResultPolicyAuditAndRevisionTogether","IdempotencyStorageTest.concurrentSameKeyHasExactlyOneCommittedResult","IdempotencyStorageTest.oldSixStepPlanCannotDowngradeSuccessfulV47History"])
+UNIT_SUITES.update({'IdempotencyStorageTest': 12})
+
+GENERATED_REGRESSIONS = set(["GeneratedColumnSchemaTest.coldMigrationEntryPointsNeverReenterCurrentTarget","GeneratedColumnSchemaTest.frozenV41ThroughV45DdlAndDescriptorsRemainUnchanged","GeneratedColumnSchemaTest.storedSlotMetadataAndNullNaturalKeyAreActuallyEnforced","GeneratedColumnSchemaTest.changedGenerationExpressionFailsWithoutRepair","GeneratedColumnSchemaTest.virtualAndWritableReplacementBothFailWithoutRepair","GeneratedColumnSchemaTest.literalCaseWhitespaceAndIntroducerTextRemainDistinct","GeneratedColumnSchemaTest.ordinaryColumnCannotMasqueradeAsGeneratedColumn","GeneratedColumnSchemaTest.generatedTypeCommentAndIndexDriftRemainRejected","GeneratedColumnSchemaTest.explicitlyWritingGeneratedSlotIsRejectedByMySql","GeneratedColumnSchemaTest.generatedDescriptorRejectsInventedNonNullOrDefaultContract"])
+UNIT_SUITES.update({'GeneratedColumnSchemaTest': 10})
+
+STORAGE_CASES = GENERATED_REGRESSIONS | GRANT_STORAGE_REGRESSIONS | IDEMPOTENCY_STORAGE_REGRESSIONS | {'storage.port'} | {
+    'storage.' + label + '.' + kind for label in ['compatibility', 'management']
+    for kind in ['tables', 'columns', 'generated', 'empty', 'history']
+}
+
+RESOURCE_CASES = {'resource.limits', 'resource.mutual-exclusion', 'resource.capacity-refusal',
+                  'resource.timeout-descendants', 'resource.cancel-descendants',
+                  'resource.oom-contained', 'resource.protected-services'}
+
 W04_REGRESSIONS = set(["ManagementHttpBoundaryTest.w04RoleLifecycleStrictCasAndBothGroupDirections","ManagementHttpBoundaryTest.w04AssignmentPairsReplaceClearRejectCrossGroupAndImmutableRoot","ManagementHttpBoundaryTest.w04DelegatedMemberAndRoleMutationsCannotConferManagement","ManagementHttpBoundaryTest.w04OrganizationDenyRemovalAndLastRoleAdministratorRollBack"])
 W04_HTTP_CASES = set(["w04.operator-login","w04.delegate-member","w04.delegate-select","w04.member-indirect-escalation","w04.role-read","w04.role-other-group-read","w04.role-cross-update","w04.role-reverse-cross-update","w04.role-duplicate","w04.second-school","w04.assignment-create","w04.financial-assignment","w04.other-assignment-create","w04.assignment-cross-update","w04.assignment-reverse-cross-update","w04.assignment-reverse-foreign-school","w04.assignment-foreign-member","w04.assignment-reverse-foreign-member","w04.assignment-foreign-role-filter","w04.assignment-reverse-foreign-role-filter","w04.assignment-reverse-foreign-school-filter","w04.assignment-pairs","w04.assignment-duplicate","w04.foreign-school","w04.foreign-role","w04.active-empty","w04.duplicate-school","w04.foreign-page-filter","w04.assignment-update","w04.assignment-cas","w04.assignment-immutable-role","w04.assignment-disable-clear","w04.assignment-read-disabled","w04.delegate-ordinary-role","w04.assignment-indirect-escalation","w04.numeric-role-id","w04.null-page","w04.unknown-role-field","w04.role-create-null-id","w04.old-business-route","w04.assignment-unknown","w04.role-disable","w04.role-cas","w04.disabled-role-active-assignment","w04.operator-no-group","w04.anonymous-role","w04.delegate-still-valid","w04.self-disable-last-admin"])
 
@@ -162,6 +188,9 @@ def validate_unit_suite(doc, name):
     require(expected_audit <= observed, 'AUDIT_REGRESSION_CASES_MISSING')
     require({case for case in W03_REGRESSIONS if case.startswith(name + '.')} <= observed, 'W03_REGRESSION_CASES_MISSING')
     require({case for case in W04_REGRESSIONS if case.startswith(name + '.')} <= observed, 'W04_REGRESSION_CASES_MISSING')
+    require({case for case in GENERATED_REGRESSIONS if case.startswith(name + '.')} <= observed, 'GENERATED_REGRESSION_CASES_MISSING')
+    require({case for case in GRANT_STORAGE_REGRESSIONS if case.startswith(name + '.')} <= observed, 'GRANT_STORAGE_CASES_MISSING')
+    require({case for case in IDEMPOTENCY_STORAGE_REGRESSIONS if case.startswith(name + '.')} <= observed, 'IDEMPOTENCY_STORAGE_CASES_MISSING')
     return count
 
 
@@ -211,7 +240,7 @@ def snapshot():
                 and model['data'] is None, 'NOT_CONFIRMED_COMMUNITY_TEST_APP')
     files = subprocess.check_output(['git', 'ls-files', '--', 'core', 'sdk'], cwd=SOURCE)
     rows = []
-    for name in sorted(set(files.decode().splitlines()) | set(["sdk/api/api-permissions/src/main/java/io/dataease/api/permissions/enterprise/RoleManagementApi.java","core/core-backend/src/main/java/io/dataease/enterprise/management/manage/ManagementPrivilegeGuard.java","core/core-backend/src/main/java/io/dataease/enterprise/management/manage/RoleManagementService.java","core/core-backend/src/main/java/io/dataease/enterprise/management/server/RoleManagementServer.java"])):
+    for name in sorted(set(files.decode().splitlines()) | set(["core/core-frontend/vite.bounded.config.ts","core/core-backend/src/main/java/io/dataease/enterprise/foundation/FoundationSchemaV47.java","core/core-backend/src/main/java/io/dataease/enterprise/foundation/EnterpriseIdempotencySqlBlock.java","core/core-backend/src/main/java/io/dataease/enterprise/permission/persistence/EnterpriseIdempotency.java","core/core-backend/src/test/java/io/dataease/enterprise/foundation/IdempotencyStorageTest.java","core/core-backend/src/main/java/io/dataease/enterprise/foundation/FoundationSchemaV46.java","core/core-backend/src/main/java/io/dataease/enterprise/foundation/EnterpriseGrantSqlBlock.java","core/core-backend/src/main/java/io/dataease/enterprise/permission/persistence/EnterpriseGrant.java","core/core-backend/src/main/java/io/dataease/enterprise/permission/persistence/EnterpriseGrantSchool.java","core/core-backend/src/test/java/io/dataease/enterprise/foundation/PermissionStorageFixture.java","core/core-backend/src/test/java/io/dataease/enterprise/foundation/GrantStorageTest.java","core/core-backend/src/test/java/io/dataease/enterprise/foundation/GeneratedColumnSchemaTest.java","sdk/api/api-permissions/src/main/java/io/dataease/api/permissions/enterprise/RoleManagementApi.java","core/core-backend/src/main/java/io/dataease/enterprise/management/manage/ManagementPrivilegeGuard.java","core/core-backend/src/main/java/io/dataease/enterprise/management/manage/RoleManagementService.java","core/core-backend/src/main/java/io/dataease/enterprise/management/server/RoleManagementServer.java"])):
         if name == 'core/core-frontend/auto-imports.d.ts' or '/resources/static/' in name:
             continue
         path = SOURCE / name
@@ -268,24 +297,42 @@ def checks(run_id):
     capacity = boundary.query('root', "SELECT @@port,@@max_connections,(SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='Threads_connected');")
     require(capacity.returncode == 0, 'DATABASE_CAPACITY_UNAVAILABLE')
     capacity_record = validate_database_capacity(*map(int, capacity.stdout.strip().split('\t')))
+    resource_spec = importlib.util.spec_from_file_location('resource_job', TOOLS / 'resource-job.py')
+    resource_job = importlib.util.module_from_spec(resource_spec)
+    resource_spec.loader.exec_module(resource_job)
     commands = [
-        ('unit', ['mvn', '-B', '-ntp', '-Dmaven.repo.local=' + str(ROOT / 'm2'),
-                  '-f', 'core/core-backend/pom.xml', 'test', '-Pstandalone,enterprise-tests']),
+        ('resource', ['python3', '-B', '-E', 'tools/phase1/verify-resource-job.py']),
+        ('unit', ['python3', '-B', '-E', 'tools/phase1/resource-job.py', 'unit']),
         ('hmac', ['node', 'tools/phase1/login-startup-regression.cjs']),
         ('receiptGuard', ['python3', '-B', '-E', 'tools/phase1/test-delivery-gate.py']),
         ('api', ['node', 'tools/phase1/community-compatibility.cjs']),
         ('database', ['python3', '-E', 'tools/phase1/verify-database-boundary.py']),
         ('foundation', ['python3', '-B', '-E', 'tools/phase1/verify-foundation.py']),
         ('control', ['python3', '-B', '-E', 'tools/phase1/verify-w03-control.py', 'all']),
-        ('w04', ['python3', '-B', '-E', 'tools/phase1/verify-w04-roles.py'])
+        ('w04', ['python3', '-B', '-E', 'tools/phase1/verify-w04-roles.py']),
+        ('storage', ['python3', '-B', '-E', 'tools/phase1/verify-w04-storage.py'])
     ]
     results = {}
     for name, cmd in commands:
         with (out / (name + '.log')).open('wb') as stream:
             result = subprocess.run(cmd, cwd=SOURCE, env=env, stdout=stream,
-                                    stderr=subprocess.STDOUT, timeout=900 if name == 'unit' else 180)
+                                    stderr=subprocess.STDOUT, timeout=900 if name in {'unit', 'storage'} else 180)
         require(result.returncode == 0, 'CHECK_FAILED_' + name.upper())
         results[name] = {'passed': True}
+    storage_path = ROOT / 'logs/w04-storage-results.json'
+    require(storage_path.stat().st_mtime >= start, 'STALE_STORAGE_REPORT')
+    storage = json.loads(storage_path.read_text())
+    validate_storage_report(storage, before)
+    (out / 'w04-storage-results.json').write_text(json.dumps(storage, indent=2))
+    results['storage'] = {'passed': True, 'cases': len(storage['cases']),
+                          'requiredCases': sorted(STORAGE_CASES), 'identity': before, 'runId': storage['runId']}
+    resource_path = ROOT / 'logs/resource-verification-results.json'
+    require(resource_path.stat().st_mtime >= start, 'STALE_RESOURCE_REPORT')
+    resource_report = json.loads(resource_path.read_text())
+    validate_resource_report(resource_report, before)
+    (out / 'resource-verification-results.json').write_text(json.dumps(resource_report, indent=2))
+    results['resource'] = {'passed': True, 'cases': len(resource_report['cases']),
+                           'requiredCases': sorted(RESOURCE_CASES), 'identity': before, 'runId': resource_report['runId']}
     total = 0
     for name in UNIT_SUITES:
         paths = list((SOURCE / 'core/core-backend/target/surefire-reports').glob('TEST-*.' + name + '.xml'))
@@ -302,16 +349,19 @@ def checks(run_id):
     results['unit']['auditRegressions'] = sorted(AUDIT_REGRESSIONS)
     results['unit']['w03Regressions'] = sorted(W03_REGRESSIONS)
     results['unit']['w04Regressions'] = sorted(W04_REGRESSIONS)
+    results['unit']['generatedRegressions'] = sorted(GENERATED_REGRESSIONS)
+    results['unit']['grantStorageRegressions'] = sorted(GRANT_STORAGE_REGRESSIONS)
+    results['unit']['idempotencyStorageRegressions'] = sorted(IDEMPOTENCY_STORAGE_REGRESSIONS)
     hmac_log = (out / 'hmac.log').read_text()
     require('5 passed' in hmac_log, 'HMAC_CASE_COUNT_MISSING')
     results['hmac']['cases'] = 5
     guard_log = (out / 'receiptGuard.log').read_text()
     match = re.search(r'Ran (\d+) tests', guard_log)
-    require(match and int(match.group(1)) >= 40 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
+    require(match and int(match.group(1)) >= 58 and '\nOK\n' in guard_log, 'RECEIPT_GUARD_TESTS_MISSING')
     results['receiptGuard']['cases'] = int(match.group(1))
     for name, filename, expected in [('api', 'community-api-results.json', 4),
                                      ('database', 'database-boundary-results.json', 14),
-                                     ('foundation', 'foundation-results.json', 22)]:
+                                     ('foundation', 'foundation-results.json', 25)]:
         path = ROOT / 'logs' / filename
         require(path.stat().st_mtime >= start, 'STALE_' + name.upper() + '_REPORT')
         body = path.read_bytes()
@@ -356,16 +406,34 @@ def checks(run_id):
             cmd.append('--enterprise.enabled=false')
         path = out / ('gate-' + name + '.log')
         with path.open('wb') as stream:
-            result = subprocess.run(cmd, cwd=ROOT, env=env, stdout=stream,
-                                    stderr=subprocess.STDOUT, timeout=45)
+            result = resource_job.run('assembly-refusal', cmd, ROOT, stdout=stream, timeout=45)
         content = path.read_text()
-        require(result.returncode == 1 and marker in content and not any(word in content for word in
+        require(result.get('exitCode') == 1 and marker in content and not any(word in content for word in
                 ['HikariPool', 'Initialized JPA EntityManagerFactory', 'Tomcat started']), 'WRONG_GATE_REFUSAL')
     results['enterpriseRefusal'] = {'passed': True, 'cases': 3}
     require(snapshot() == before, 'RUNTIME_OR_SOURCE_CHANGED_DURING_CHECKS')
     receipt = {'runId': run_id, 'identity': before, 'checks': results}
     (out / 'remote-checks.json').write_text(json.dumps(receipt, indent=2))
     return receipt
+
+
+def validate_resource_report(resource, identity):
+    require(resource.get('schemaVersion') == 1 and resource.get('passed') is True
+            and resource.get('prebuild') is False, 'RESOURCE_NOT_PASSED')
+    require(resource.get('identity') == identity, 'RESOURCE_RECEIPT_IDENTITY_MISMATCH')
+    observed = {case['id'] for case in resource.get('cases', []) if case.get('status') == 'passed'}
+    require(len(observed) == len(resource.get('cases', [])) and observed == RESOURCE_CASES,
+            'RESOURCE_CASES_MISSING_OR_FAILED')
+
+
+def validate_storage_report(storage, identity):
+    require(storage.get('passed') is True and storage.get('state') == 'PASSED'
+            and storage.get('schemaVersion') == 1, 'STORAGE_NOT_PASSED')
+    require(storage.get('identity') == identity, 'STORAGE_RECEIPT_IDENTITY_MISMATCH')
+    require(str(uuid.UUID(storage['runId'])) == storage['runId'], 'INVALID_STORAGE_RUN_ID')
+    observed = {case['id'] for case in storage.get('cases', []) if case.get('status') == 'passed'}
+    require(len(observed) == len(storage.get('cases', [])) and observed == STORAGE_CASES,
+            'STORAGE_CASES_MISSING_OR_FAILED')
 
 
 def verify_gate(head=None):
@@ -377,12 +445,21 @@ def verify_gate(head=None):
     require(report['identity'] == snapshot(), 'DELIVERY_SOURCE_OR_RUNTIME_CHANGED')
     if head:
         require(report['identity']['head'] == head, 'PUSH_HEAD_NOT_TESTED')
+    require(isinstance(report.get('checks'), dict), 'INVALID_CHECKS_ROOT')
+    protocol = report.get('protocol', {})
+    cases = protocol.get('cases', [])
+    require(protocol.get('schemaVersion') == 1 and protocol.get('passed') is True
+            and len(cases) == len(PROTOCOL_CASES)
+            and {case.get('id') for case in cases} == PROTOCOL_CASES
+            and all(case.get('status') == 'passed' for case in cases),
+            'PROTOCOL_CHECKS_MISSING_OR_FAILED')
+    require(protocol.get('sources') == protocol_sources(), 'PROTOCOL_SOURCE_MISMATCH')
     run_id = report['runId']
     require(str(uuid.UUID(run_id)) == run_id, 'INVALID_RUN_ID')
     remote = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'remote-checks.json').read_text())
     require(remote['identity'] == report['identity'] and remote['checks'] == report['checks'],
             'REMOTE_CHECK_RECEIPT_MISMATCH')
-    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 40), ('foundation', 22), ('control', 80), ('w04', len(W04_HTTP_CASES))]:
+    for name, minimum in [('unit', sum(UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 60), ('foundation', 25), ('control', 80), ('w04', len(W04_HTTP_CASES)), ('storage', len(STORAGE_CASES)), ('resource', len(RESOURCE_CASES))]:
         item = report['checks'].get(name, {})
         require(item.get('passed') is True and item.get('cases', 0) >= minimum, 'REQUIRED_CHECK_MISSING')
     require(set(report['checks']['unit'].get('schemaRegressions', [])) == SCHEMA_REGRESSIONS,
@@ -399,6 +476,22 @@ def verify_gate(head=None):
             'AUDIT_REGRESSION_RECEIPT_MISSING')
     require(set(report['checks']['unit'].get('w03Regressions', [])) == W03_REGRESSIONS, 'W03_REGRESSION_RECEIPT_MISSING')
     require(set(report['checks']['unit'].get('w04Regressions', [])) == W04_REGRESSIONS, 'W04_REGRESSION_RECEIPT_MISSING')
+    require(set(report['checks']['unit'].get('generatedRegressions', [])) == GENERATED_REGRESSIONS, 'GENERATED_REGRESSION_RECEIPT_MISSING')
+    require(set(report['checks']['unit'].get('grantStorageRegressions', [])) == GRANT_STORAGE_REGRESSIONS, 'GRANT_STORAGE_RECEIPT_MISSING')
+    require(set(report['checks']['unit'].get('idempotencyStorageRegressions', [])) == IDEMPOTENCY_STORAGE_REGRESSIONS,
+            'IDEMPOTENCY_STORAGE_RECEIPT_MISSING')
+    resource = report['checks']['resource']
+    require(set(resource.get('requiredCases', [])) == RESOURCE_CASES, 'RESOURCE_CASE_RECEIPT_MISSING')
+    require(resource.get('identity') == report['identity'], 'RESOURCE_RECEIPT_IDENTITY_MISMATCH')
+    original_resource = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'resource-verification-results.json').read_text())
+    validate_resource_report(original_resource, report['identity'])
+    require(original_resource['runId'] == resource.get('runId'), 'RESOURCE_RUN_ID_MISMATCH')
+    storage = report['checks']['storage']
+    require(set(storage.get('requiredCases', [])) == STORAGE_CASES, 'STORAGE_CASE_RECEIPT_MISSING')
+    require(storage.get('identity') == report['identity'], 'STORAGE_RECEIPT_IDENTITY_MISMATCH')
+    original_storage = json.loads((ROOT / 'logs' / ('delivery-' + run_id) / 'w04-storage-results.json').read_text())
+    validate_storage_report(original_storage, report['identity'])
+    require(original_storage['runId'] == storage.get('runId'), 'STORAGE_RUN_ID_MISMATCH')
     w04 = report['checks']['w04']
     require(set(w04.get('requiredCases', [])) == W04_HTTP_CASES, 'W04_CASE_RECEIPT_MISSING')
     require(w04.get('head') == report['identity']['head'] and w04.get('jarSha256') == report['identity']['jarSha256']

@@ -41,7 +41,7 @@ class ResourceMigrationTest {
         var listener=new InitSqlListener();ReflectionTestUtils.setField(listener,"deStandaloneVersionRepository",versions);listener.run(null);
     }
     @Test void exactFiveStepEmptyPlanAndRepeatProvideNoResources() {
-        fixture("resourceledger",(jdbc,versions)->{run(versions);run(versions);new FoundationSchemaVerifier(jdbc).run(null);
+        fixture("resourceledger",(jdbc,versions)->{run(versions);run(versions);new FoundationSchemaVerifier(jdbc,FoundationSchemaV45.TABLES).run(null);
             assertThat(versions.findRecords()).extracting(DeStandaloneVersion::getVersion).containsExactly("4.5","4.4","4.3","4.2","4.1");
             assertThat(versions.findRecords()).extracting(DeStandaloneVersion::getSuccess).containsOnly(true);
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM de_ent_resource",Long.class)).isZero();});
@@ -50,7 +50,7 @@ class ResourceMigrationTest {
         var jdbc=FoundationMigrationTest.fresh("resourceupgrade");new EnterpriseFoundationSqlBlock(jdbc).execute();new EnterpriseAuditSqlBlock(jdbc).execute();
         new EnterpriseAuthoritySqlBlock(jdbc).execute();new EnterpriseCredentialSqlBlock(jdbc).execute();
         jdbc.update("INSERT INTO de_ent_user(id,username,display_name) VALUES(1,'retained','Retained')");
-        new EnterpriseResourceSqlBlock(jdbc).execute();new EnterpriseResourceSqlBlock(jdbc).execute();new FoundationSchemaVerifier(jdbc).run(null);
+        new EnterpriseResourceSqlBlock(jdbc).execute();new EnterpriseResourceSqlBlock(jdbc).execute();new FoundationSchemaVerifier(jdbc,FoundationSchemaV45.TABLES).run(null);
         assertThat(jdbc.queryForObject("SELECT username FROM de_ent_user WHERE id=1",String.class)).isEqualTo("retained");
     }
     @Test void committedResourceDdlFailureRetainsFailedLedgerAndSafelyRetries() {
@@ -66,7 +66,7 @@ class ResourceMigrationTest {
                 ctx.registerBean(EnterpriseResourceSqlBlock.class,()->new EnterpriseResourceSqlBlock(interrupted));ctx.refresh();new SpringContextUtil().setApplicationContext(ctx);
                 assertThatThrownBy(()->run(versions)).hasMessageContaining("4.5");
             }finally{new SpringContextUtil().setApplicationContext(current);}
-            run(versions);new FoundationSchemaVerifier(jdbc).run(null);
+            run(versions);new FoundationSchemaVerifier(jdbc,FoundationSchemaV45.TABLES).run(null);
             assertThat(versions.findRecords()).extracting(DeStandaloneVersion::getVersion).containsExactly("4.5","4.5","4.4","4.3","4.2","4.1");
             assertThat(versions.findRecords()).extracting(DeStandaloneVersion::getSuccess).containsExactly(true,false,true,true,true,true);
         });

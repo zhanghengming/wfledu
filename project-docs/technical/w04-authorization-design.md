@@ -88,11 +88,11 @@ W04首次不缓存权限决策，后续请求重新加载权威事实。身份�
 
 复用4.3六表、4.4身份会话及4.5资源归属。新增候选4.6为de_ent_grant／de_ent_grant_school，4.7为USER分支幂等存储；执行前先新增生成列表达与验证支持，注册连续组4迁移、当前目标及实体。4.1—4.5冻结DDL和历史指纹不得变化。
 
-生成列resource_key／principal_key的表达式、STORED／VIRTUAL、EXTRA、是否可写、元数据可空性和索引均必须基于隔离MySQL实测后定版；当前普通列验证器会拒绝它们，不能只放宽EXTRA。表达式规范化仅接受明确的展示等价，不使用宽泛lower／trim。生成列JPA只读，浏览器无对应字段。
+生成列resource_key／principal_key已按隔离MySQL实测扩展描述与校验：STORED、EXTRA、元数据可空性、默认及索引分别严格核对，DDL表达与观察到的元数据表达分开记录，表达式逐字比较，不套用CHECK规范化或lower／trim。生成列JPA只读，浏览器无对应字段。当前实施范围与字段说明见[存储增量](w04-storage-dictionary.md)，实际整包结果见[存储记录](../development/w04-authorization-storage.md)。
 
 在专用合成库证明空库、4.5带行升级、重复启动、部分DDL已提交但失败账本保留的重试；反向外键及非法组合拒绝。未知de_ent表／视图仍拒绝，新版不自动ALTER漂移；不根据上游orgId猜测存量归属，不回填默认允许策略。升级后旧W03程序不一定可启动，回退使用兼容新历史的包或经明确授权的备份恢复，不能删除账本降级。
 
-W04的DATASET测试夹具必须同时建立实际CoreDatasetGroup dataset节点及同ID归属，不用虚构ID／目录验证“数据权限通过”；登记只在受控合成夹具进行，正式源／数据集归属绑定由W05补齐。catalog与preview不返回SQL／样本，也不从策略允许自动开放旧图表接口。
+W04业务catalog、preview和普通VIEW的DATASET测试夹具必须同时建立实际CoreDatasetGroup dataset节点及同ID归属，不用虚构ID／目录验证“数据权限通过”；登记只在受控合成夹具进行，正式源／数据集归属绑定由W05补齐。第3步存储FK测试使用合成归属记录，仅证明类型与集团关联，不证明业务数据权限或实际取数。catalog与preview不返回SQL／样本，也不从策略允许自动开放旧图表接口。
 
 ## 7. 三层验证与对后续包的契约
 

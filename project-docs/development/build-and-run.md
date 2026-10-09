@@ -19,3 +19,19 @@ Linux 构建机建议 JDK 21、Maven 3.9.x、Docker Compose。先运行 `node to
 ## 本地基础服务
 
 `deploy/dev/compose.yaml` 只负责 MySQL 和 Redis，不会安装或启动 DataEase。本地端口默认绑定 `127.0.0.1`。关闭服务使用 `docker compose ... down`，不要加 `-v`，除非明确要删除测试数据卷并已确认目标。
+
+
+## 共享开发服务器的受限构建补充（2026-10-09）
+
+在124.221.139.87专用任务检出，先核对W02和[恢复记录](resource-safe-recovery.md)的进程／配置／容量，按已授权生命周期暂停18100／18120；必要的测试MySQL缓存释放只限已核对的13306实例，清洁重启前后比较数据和配置，不复用历史硬编码PID或操作原3306。保留全部合成库、旧服务、原源码及用户修改。
+
+```bash
+python3 -B tools/phase1/verify-resource-job.py --prebuild
+python3 -B tools/phase1/build-safe.py
+```
+
+第二条要求第一条的新报告通过、两个任务应用已停止且源分支正确；按SDK install、完整distributed受限前端及build:flush、后端standalone,enterprise-tests顺序运行，保存独立阶段状态和源码／JAR摘要。后端显式启用真实测试，不用默认跳过测试的package结果代替。容量不足明确拒绝，共享服务器不绕过此入口原样执行无整组限制的8GiB脚本。
+
+前端受限脚本经vite.bounded.config.ts复用原配置并限制文件并发16、CSS线程1；原脚本保留给其他适配环境。固定前端MemoryHigh=7680MiB、MemoryMax=8192MiB、老年代7168MiB，启动要求10240MiB；Java作业3584／4096MiB及6144MiB门槛，CPUQuota=200%，LimitCORE=0。全组取消／超时清理、互斥与主机余量保护见恢复记录，限额不自动增加。
+
+完整包成功后依据登记的私有参数恢复18100／18120，验证同包／独立配置／4.7迁移，再按[测试规范](testing.md)及[交付后验收](post-delivery-acceptance.md)执行用户流程和完整门禁。构建、运行、最终HEAD及交付后复验分别留证；不用旧成功报告替代本轮执行。

@@ -9,8 +9,32 @@ import java.util.Map;
 
 /** MySQL 8-only, append-only schema contract. No legacy ownership is inferred. */
 public final class FoundationSchema {
-    record Column(String name, String type, boolean nullable, String defaultValue, String comment) {
+    /** expression is MySQL's observed canonical metadata, compared without normalization. */
+    record Generation(String ddlExpression, String metadataExpression) {
+        Generation(String expression) { this(expression, expression); }
+        Generation {
+            if (ddlExpression == null || ddlExpression.isBlank()
+                    || metadataExpression == null || metadataExpression.isBlank()) {
+                throw new IllegalArgumentException("Generation expression required");
+            }
+        }
+    }
+
+    record Column(String name, String type, boolean nullable, String defaultValue, String comment,
+                  Generation generation) {
+        Column(String name, String type, boolean nullable, String defaultValue, String comment) {
+            this(name, type, nullable, defaultValue, comment, null);
+        }
+        Column {
+            if (generation != null && (!nullable || defaultValue != null)) {
+                throw new IllegalArgumentException("Stored generated metadata must be nullable with no default");
+            }
+        }
         String ddl() {
+            if (generation != null) {
+                return "`" + name + "` " + type + " GENERATED ALWAYS AS (" + generation.ddlExpression()
+                        + ") STORED COMMENT '" + comment + "'";
+            }
             return "`" + name + "` " + type + (nullable ? " NULL" : " NOT NULL")
                     + (defaultValue == null ? "" : " DEFAULT " + defaultValue)
                     + " COMMENT '" + comment + "'";
@@ -65,7 +89,7 @@ public final class FoundationSchema {
     }
 
     // Current production target. A later version must replace this target without modifying V41.
-    static final List<Table> TABLES = List.copyOf(FoundationSchemaV45.TABLES);
+    static final List<Table> TABLES = List.copyOf(FoundationSchemaV47.TABLES);
 
     public static boolean owns(String table) {
         return TABLES.stream().anyMatch(v -> v.name().equals(table));
@@ -80,7 +104,7 @@ public final class FoundationSchema {
         Map<String, Object> meta = jdbc.queryForMap("SELECT ENGINE,TABLE_COLLATION,TABLE_COMMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?", table.name());
         require("InnoDB".equals(meta.get("ENGINE")) && "utf8mb4_0900_bin".equals(meta.get("TABLE_COLLATION"))
                 && table.comment().equals(meta.get("TABLE_COMMENT")), table);
-        List<Map<String, Object>> columns = jdbc.queryForList("SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,COLUMN_COMMENT,COLLATION_NAME,EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY ORDINAL_POSITION", table.name());
+        List<Map<String, Object>> columns = jdbc.queryForList("SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,COLUMN_COMMENT,COLLATION_NAME,EXTRA,GENERATION_EXPRESSION FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY ORDINAL_POSITION", table.name());
         require(columns.size() == table.columns().size(), table);
         for (int i = 0; i < columns.size(); i++) {
             Column wanted = table.columns().get(i);
@@ -90,7 +114,7 @@ public final class FoundationSchema {
                     && defaultMatches(wanted, got.get("COLUMN_DEFAULT"))
                     && wanted.comment().equals(got.get("COLUMN_COMMENT"))
                     && (!wanted.type().startsWith("varchar") || "utf8mb4_0900_bin".equals(got.get("COLLATION_NAME")))
-                    && ("".equals(got.get("EXTRA")) || "DEFAULT_GENERATED".equals(got.get("EXTRA"))), table);
+                    && generationMatches(wanted, got), table);
         }
         List<Map<String, Object>> indices = jdbc.queryForList("SELECT INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME,SUB_PART,COLLATION,INDEX_TYPE,IS_VISIBLE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY INDEX_NAME,SEQ_IN_INDEX", table.name());
         Map<String, List<Map<String, Object>>> byName = new LinkedHashMap<>();
@@ -121,6 +145,23 @@ public final class FoundationSchema {
         require(constraints.size() == table.checks().size(), table);
         table.checks().forEach((name, expr) -> require(constraints.stream().anyMatch(row -> name.equals(row.get("CONSTRAINT_NAME"))
                 && "YES".equals(row.get("ENFORCED")) && normalizeCheck(expr).equals(normalizeCheck(row.get("CHECK_CLAUSE").toString()))), table));
+    }
+
+    private static boolean generationMatches(Column column, Map<String, Object> actual) {
+        if (column.generation() == null) {
+            return "".equals(actual.get("GENERATION_EXPRESSION"))
+                    && ("".equals(actual.get("EXTRA")) || "DEFAULT_GENERATED".equals(actual.get("EXTRA")));
+        }
+        return "STORED GENERATED".equals(actual.get("EXTRA"))
+                && column.generation().metadataExpression().equals(actual.get("GENERATION_EXPRESSION"));
+    }
+
+    static Column stored(String name, String type, String canonicalExpression, String comment) {
+        return new Column(name, type, true, null, comment, new Generation(canonicalExpression));
+    }
+
+    static Column stored(String name, String type, String ddlExpression, String metadataExpression, String comment) {
+        return new Column(name, type, true, null, comment, new Generation(ddlExpression, metadataExpression));
     }
 
     // Normalize only known function names. Literal case, whitespace and embedded quotes are data.

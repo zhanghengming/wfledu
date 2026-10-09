@@ -53,5 +53,16 @@ public class FoundationConfiguration {
     EnterpriseResourceSqlBlock enterpriseResourceSqlBlock(JdbcTemplate jdbc) {
         return new EnterpriseResourceSqlBlock(jdbc);
     }
+    @Bean
+    @ConditionalOnProperty(name = "enterprise.foundation.enabled", havingValue = "true")
+    EnterpriseGrantSqlBlock enterpriseGrantSqlBlock(JdbcTemplate jdbc) {
+        return new EnterpriseGrantSqlBlock(jdbc);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "enterprise.foundation.enabled", havingValue = "true")
+    EnterpriseIdempotencySqlBlock enterpriseIdempotencySqlBlock(JdbcTemplate jdbc) {
+        return new EnterpriseIdempotencySqlBlock(jdbc);
+    }
 
 }

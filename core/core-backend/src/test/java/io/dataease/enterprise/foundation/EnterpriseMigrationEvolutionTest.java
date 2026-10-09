@@ -233,7 +233,7 @@ class EnterpriseMigrationEvolutionTest {
         assertThat(current.getFirst().columns()).hasSize(original.columns().size() + 1);
         assertThat(original.columns()).extracting(FoundationSchema.Column::name).doesNotContain("w03_evolution_probe");
         assertThat(FoundationSchemaV41.TABLES).hasSize(4);
-        assertThat(FoundationSchema.TABLES).hasSize(15);
+        assertThat(FoundationSchema.TABLES).hasSize(18);
         assertThatThrownBy(() -> new FoundationSchemaVerifier(new JdbcTemplate(), List.of(original, original)))
                 .isInstanceOf(IllegalArgumentException.class);
     }

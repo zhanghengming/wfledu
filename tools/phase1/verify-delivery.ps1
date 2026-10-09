@@ -4,6 +4,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'remote-json-response.ps1')
+$taskProtocol = ConvertFrom-TaskJsonResponse -Response @(& (Join-Path $PSScriptRoot 'test-remote-json-response.ps1'))
 $taskWorkspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $taskRemoteRoot = '/home/data_dev_zhm/dataease-phase1-test/w02-security'
 $taskHelper = "$taskRemoteRoot/source/tools/phase1/login-test-context.py"
@@ -24,7 +26,7 @@ if (-not ($taskProcesses | Where-Object {
 function Get-TaskJson([string]$TaskArguments) {
     $taskJson = & ssh -o BatchMode=yes -o StrictHostKeyChecking=yes data_dev_zhm@124.221.139.87 "python3 -E $taskHelper $TaskArguments"
     if ($LASTEXITCODE -ne 0) { throw 'Remote verification rejected; inspect dedicated logs.' }
-    return ($taskJson | ConvertFrom-Json)
+    return (ConvertFrom-TaskJsonResponse -Response @($taskJson))
 }
 
 function Compare-TaskIdentity($TaskBefore, $TaskAfter) {
@@ -76,6 +78,7 @@ try {
     $taskGate = @{
         schemaVersion = 1; runId = $taskRunId; identity = $taskIdentity; checks = $taskChecks.checks;
         browser = $taskBrowser.Report; negativeControls = $taskNegative; passed = $true;
+        protocol = $taskProtocol;
         # Browser machine and server clocks can differ; receipt TTL uses the server's clock.
         finishedUnix = $taskAfter.serverUnix
     }

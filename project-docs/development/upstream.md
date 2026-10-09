@@ -53,3 +53,14 @@
 角色与任职SDK新增RoleManagementApi和ManagementContract三种请求；实现为自研enterprise管理模块的Server／Service／PrivilegeGuard。复用4.3实体、主体、原事务、ManagementAuthority和最后管理员不变量；旧成员／组织写入口补间接提权保护，现有ManagementRequestFilter仅增加四条精确集团路由，StrictManagementJson仅局部扩展新DTO，审计增加四类类型事件。
 
 没有修改社区ChartDataManage、原公开查询接口、全局Jackson、Vue框架或de-xpack；无新迁移，不更新子模块指针。行为与验证见[第2步实现](w04-role-assignment.md)。后续适配不得通过放开旧业务入口绕过新策略／源绑定。
+
+
+## W04第3步核心增量登记
+
+生成列元数据在FoundationSchema增量建模，保留既有五参数普通列构造器与历史DDL；新增STORED声明及精确表达式／EXTRA校验，未放宽普通列、CHECK、索引或默认值验证。新4.6／4.7 SqlBlock、三实体及当前目标注册位于企业实现；共享SDK／前端／XPack未修改，未复制商业版实现。生成列JPA不可写，归属／自然键不可普通更新。
+
+V46静态构造回调当前FoundationSchema导致冷加载循环的真实缺陷已通过旧JAR及旧代码JUnit复现；改为直接构造独立嵌套描述，原DDL指纹保持。后续迁移同样验证独立冷加载；不把正常启动顺序视为契约。源文件及具名回归索引见[W04存储记录](w04-authorization-storage.md)。新增独立存储验收工具与55项门禁拒绝自检，仍保留完整产品登录／接口拒绝路径。
+
+2026-10-09恢复补充：前述“前端未修改”只指业务存储单元；本次新增package.json的build:distributed:bounded及vite.bounded.config.ts，复用原distributed契约，不改变原脚本／页面／UI框架／SDK／XPack。新增resource-job.py、verify-resource-job.py、build-safe.py，并让Java／存储／装配验证经过同一受限执行器。源码摘要包含未跟踪的受限配置；门禁提升为回执58和资源7组，防止旧或prebuild报告放行。故障及最终容量修订见[恢复记录](resource-safe-recovery.md)，不以候选4GiB额度宣称前端成功。
+
+回执协议整改继续提升为Python60及PowerShell6类协议检查：资源库不输出CLI摘要，机器响应必须是单一JSON对象，原始远程检查与最终回执仍逐字段相等，解析器／测试源码摘要共同绑定。只改变验收工具，不改变公开产品接口或已成功运行包；首轮污染回执拒绝及重新执行证据见恢复记录与最终回执。

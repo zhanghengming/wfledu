@@ -47,3 +47,10 @@ enterprise.foundation.enabled默认false，只接受精确true/false。显式tru
 详见[实施设计](w03-control-plane.md)及[验收环境](w03-acceptance.md)。enterprise.management.enabled默认false；开启要求foundation=true、enterprise.enabled=false，正式4.1—4.5迁移及私有受控初始化完成。bootstrap-file仅显式本机首次使用，权限600、严格JSON，不提供公开初始化；初始化成功后移除此参数，重启不重复授权。allowed-origins可配置精确http／https来源，默认空；不得使用星号或路径／用户信息。
 
 控制模式关闭旧业务、文件、分享、导出及嵌入入口，等待W04／W05／W07安全实现；新随机Bearer会话不兼容社区Token。配置必须同时满足Spring加载位置及ConfigUtils读取的user.home/opt/dataease3.0/config/application.yml，新任务home的缓存、文件和替补路径均指向自身。专用18120仅loopback、Hikari配置目标2条；完整产品实测该账号12条连接，容量按实际总数预算；旧3306／6379／8100及配置不改。ACTIVE集团只表示控制面身份可用，物理业务源需W06验证后开放。
+
+
+## W04第3步配置增量
+
+本步骤没有新增配置开关、宿主参数或默认用户。enterprise.foundation.enabled=true注册连续4.1—4.7组4迁移；缺省／false仍不加载企业实体及迁移。management测试模式沿用W03专用配置，不开启未完成的完整企业业务取数。现有两套任务配置保持不变，字段与数据边界见[W04存储增量](../technical/w04-storage-dictionary.md)。
+
+授权表默认DISABLED，无自动授权；幂等USER-only，app_id强制NULL，不提前依赖APP表。4.7成功后不能用只认识4.6及以前的二进制启动并删账本“恢复”；兼容回退要求见[迁移规范](migration.md)。单节点合成验收不表示生产部署或宿主联调通过。

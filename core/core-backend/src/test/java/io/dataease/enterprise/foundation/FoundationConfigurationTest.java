@@ -21,6 +21,8 @@ class FoundationConfigurationTest {
             assertThat(context).doesNotHaveBean(EnterpriseAuthoritySqlBlock.class);
             assertThat(context).doesNotHaveBean(EnterpriseCredentialSqlBlock.class);
             assertThat(context).doesNotHaveBean(EnterpriseResourceSqlBlock.class);
+            assertThat(context).doesNotHaveBean(EnterpriseGrantSqlBlock.class);
+            assertThat(context).doesNotHaveBean(EnterpriseIdempotencySqlBlock.class);
         });
         assertThat(org.mockito.Mockito.mockingDetails(jdbc).getInvocations())
                 .allMatch(call -> call.getMethod().getName().equals("afterPropertiesSet"));
@@ -35,6 +37,8 @@ class FoundationConfigurationTest {
                     assertThat(context).doesNotHaveBean(EnterpriseAuthoritySqlBlock.class);
                     assertThat(context).doesNotHaveBean(EnterpriseCredentialSqlBlock.class);
             assertThat(context).doesNotHaveBean(EnterpriseResourceSqlBlock.class);
+            assertThat(context).doesNotHaveBean(EnterpriseGrantSqlBlock.class);
+            assertThat(context).doesNotHaveBean(EnterpriseIdempotencySqlBlock.class);
                 });
         assertThat(org.mockito.Mockito.mockingDetails(jdbc).getInvocations())
                 .allMatch(call -> call.getMethod().getName().equals("afterPropertiesSet"));
@@ -48,6 +52,10 @@ class FoundationConfigurationTest {
             assertThat(context).hasSingleBean(EnterpriseAuthoritySqlBlock.class);
             assertThat(context).hasSingleBean(EnterpriseCredentialSqlBlock.class);
             assertThat(context).hasSingleBean(EnterpriseResourceSqlBlock.class);
+            assertThat(context).hasSingleBean(EnterpriseGrantSqlBlock.class);
+            assertThat(context).hasSingleBean(EnterpriseIdempotencySqlBlock.class);
+            assertThat(context.getBean(EnterpriseGrantSqlBlock.class).getVersion().getVersion()).isEqualTo("4.6");
+            assertThat(context.getBean(EnterpriseIdempotencySqlBlock.class).getVersion().getVersion()).isEqualTo("4.7");
             assertThat(context.getBean(EnterpriseAuditSqlBlock.class).getVersion().getVersion()).isEqualTo("4.2");
             assertThat(context).hasSingleBean(FoundationSchemaVerifier.class);
             assertThat(context.getBean(FoundationSchemaVerifier.class).getOrder()).isGreaterThan(1);

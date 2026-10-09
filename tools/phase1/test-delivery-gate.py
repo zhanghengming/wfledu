@@ -15,12 +15,15 @@ spec.loader.exec_module(gate)
 
 class DeliveryGateTest(unittest.TestCase):
     def setUp(self):
+        self.tool_patch = patch.object(gate, 'TOOLS', Path(__file__).parent)
+        self.tool_patch.start()
+        self.addCleanup(self.tool_patch.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.identity = {'head': 'synthetic-head', 'jarSha256': 'synthetic-jar', 'controlRuntime': {'pid': 123}}
         self.run = '12345678-1234-1234-1234-123456789abc'
         checks = {name: {'passed': True, 'cases': count} for name, count in
-                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 40), ('foundation', 22), ('control', 80), ('w04', len(gate.W04_HTTP_CASES))]}
+                  [('unit', sum(gate.UNIT_SUITES.values())), ('hmac', 5), ('api', 4), ('database', 14), ('enterpriseRefusal', 3), ('receiptGuard', 60), ('foundation', 25), ('control', 80), ('w04', len(gate.W04_HTTP_CASES)), ('storage', len(gate.STORAGE_CASES)), ('resource', len(gate.RESOURCE_CASES))]}
         checks['unit']['schemaRegressions'] = sorted(gate.SCHEMA_REGRESSIONS)
         checks['unit']['jpaRegressions'] = sorted(gate.JPA_REGRESSIONS)
         checks['unit']['mappingRegressions'] = sorted(gate.MAPPING_REGRESSIONS)
@@ -29,6 +32,11 @@ class DeliveryGateTest(unittest.TestCase):
         checks['unit']['auditRegressions'] = sorted(gate.AUDIT_REGRESSIONS)
         checks['unit']['w03Regressions'] = sorted(gate.W03_REGRESSIONS)
         checks['unit']['w04Regressions'] = sorted(gate.W04_REGRESSIONS)
+        checks['unit']['generatedRegressions'] = sorted(gate.GENERATED_REGRESSIONS)
+        checks['unit']['grantStorageRegressions'] = sorted(gate.GRANT_STORAGE_REGRESSIONS)
+        checks['unit']['idempotencyStorageRegressions'] = sorted(gate.IDEMPOTENCY_STORAGE_REGRESSIONS)
+        checks['resource'].update(requiredCases=sorted(gate.RESOURCE_CASES), identity=self.identity, runId=self.run)
+        checks['storage'].update(requiredCases=sorted(gate.STORAGE_CASES), identity=self.identity, runId=self.run)
         checks['w04'].update(requiredCases=sorted(gate.W04_HTTP_CASES), head='synthetic-head', jarSha256='synthetic-jar', controlRuntime={'pid': 123})
         checks['control'].update(requiredCases=sorted(gate.W03_HTTP_CASES), pid=123, jarSha256='synthetic-jar', head='synthetic-head')
         cases = [{'id': kind + '.' + action, 'status': 'passed'}
@@ -37,6 +45,8 @@ class DeliveryGateTest(unittest.TestCase):
         self.report = {
             'schemaVersion': 1, 'passed': True, 'finishedUnix': 999, 'runId': self.run,
             'identity': self.identity, 'checks': checks,
+            'protocol': {'schemaVersion': 1, 'passed': True, 'sources': gate.protocol_sources(),
+                         'cases': [{'id': name, 'status': 'passed'} for name in sorted(gate.PROTOCOL_CASES)]},
             'browser': {'passed': True, 'runId': self.run, 'identity': self.identity,
                         'fault': None, 'cases': cases, 'apiErrors': [], 'pageErrors': [],
                         'assetErrors': [], 'networkErrors': []},
@@ -46,6 +56,16 @@ class DeliveryGateTest(unittest.TestCase):
         out.mkdir(parents=True)
         (out / 'remote-checks.json').write_text(json.dumps(
             {'identity': self.identity, 'checks': checks}))
+
+        self.storage = {'schemaVersion': 1, 'runId': self.run, 'passed': True, 'state': 'PASSED',
+                        'identity': self.identity,
+                        'cases': [{'id': name, 'status': 'passed'} for name in sorted(gate.STORAGE_CASES)]}
+        (out / 'w04-storage-results.json').write_text(json.dumps(self.storage))
+
+        self.resource = {'schemaVersion': 1, 'runId': self.run, 'passed': True, 'prebuild': False,
+                         'identity': self.identity,
+                         'cases': [{'id': name, 'status': 'passed'} for name in sorted(gate.RESOURCE_CASES)]}
+        (out / 'resource-verification-results.json').write_text(json.dumps(self.resource))
 
     def tearDown(self):
         self.temp.cleanup()
@@ -64,6 +84,13 @@ class DeliveryGateTest(unittest.TestCase):
 
     def test_complete_current_receipt_accepted(self):
         self.assertTrue(self.verify(self.report)['passed'])
+
+    def test_library_summaries_cannot_turn_checks_into_array(self):
+        self.rejected(lambda report: report.update(checks=[None, None, None, report['checks']]),
+                      'INVALID_CHECKS_ROOT')
+
+    def test_missing_protocol_regressions_rejected(self):
+        self.rejected(lambda report: report.pop('protocol'), 'PROTOCOL_CHECKS_MISSING_OR_FAILED')
 
     def test_database_capacity_requires_isolated_port_and_parallel_headroom(self):
         self.assertEqual(12, gate.validate_database_capacity(13306, 80, 68)['minimumHeadroom'])
@@ -326,6 +353,109 @@ class DeliveryGateTest(unittest.TestCase):
             ET.SubElement(doc, 'testcase', name=name)
         with self.assertRaisesRegex(RuntimeError, 'W04_REGRESSION_CASES_MISSING'):
             gate.validate_unit_suite(doc, 'ManagementHttpBoundaryTest')
+
+    def test_previous_186_tests_cannot_pass_generated_column_unit(self):
+        report = copy.deepcopy(self.report); report['checks']['unit']['cases'] = 186
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'): self.verify(report)
+
+    def test_generated_names_cannot_be_replaced_by_high_count(self):
+        doc = ET.Element('testsuite', tests='10', failures='0', errors='0', skipped='0')
+        for i in range(10): ET.SubElement(doc, 'testcase', name='unrelated_' + str(i))
+        with self.assertRaisesRegex(RuntimeError, 'GENERATED_REGRESSION_CASES_MISSING'):
+            gate.validate_unit_suite(doc, 'GeneratedColumnSchemaTest')
+
+    def test_generated_receipt_requires_all_names(self):
+        report = copy.deepcopy(self.report); report['checks']['unit']['generatedRegressions'].pop()
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'GENERATED_REGRESSION_RECEIPT_MISSING'): self.verify(report)
+
+    def test_previous_195_tests_cannot_pass_grant_storage(self):
+        report=copy.deepcopy(self.report);report['checks']['unit']['cases']=195
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError,'REQUIRED_CHECK_MISSING'):self.verify(report)
+
+    def test_grant_storage_names_cannot_be_replaced_by_high_count(self):
+        doc=ET.Element('testsuite',tests='12',failures='0',errors='0',skipped='0')
+        for i in range(12):ET.SubElement(doc,'testcase',name='unrelated_'+str(i))
+        with self.assertRaisesRegex(RuntimeError,'GRANT_STORAGE_CASES_MISSING'):
+            gate.validate_unit_suite(doc,'GrantStorageTest')
+
+    def test_grant_storage_receipt_requires_all_names(self):
+        report=copy.deepcopy(self.report);report['checks']['unit']['grantStorageRegressions'].pop()
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError,'GRANT_STORAGE_RECEIPT_MISSING'):self.verify(report)
+
+    def test_previous_207_tests_cannot_pass_cold_initialization_regression(self):
+        report=copy.deepcopy(self.report);report['checks']['unit']['cases']=207
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError,'REQUIRED_CHECK_MISSING'):self.verify(report)
+
+    def test_cold_initialization_name_is_mandatory_even_with_enough_tests(self):
+        methods=sorted(case.split('.',1)[1] for case in gate.GENERATED_REGRESSIONS
+                       if 'coldMigrationEntryPoints' not in case)
+        doc=ET.Element('testsuite',tests='10',failures='0',errors='0',skipped='0')
+        for name in methods+['unrelated']:ET.SubElement(doc,'testcase',name=name)
+        with self.assertRaisesRegex(RuntimeError,'GENERATED_REGRESSION_CASES_MISSING'):
+            gate.validate_unit_suite(doc,'GeneratedColumnSchemaTest')
+
+    def test_cold_initialization_receipt_is_required(self):
+        report=copy.deepcopy(self.report)
+        report['checks']['unit']['generatedRegressions'].remove('GeneratedColumnSchemaTest.coldMigrationEntryPointsNeverReenterCurrentTarget')
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError,'GENERATED_REGRESSION_RECEIPT_MISSING'):self.verify(report)
+
+
+
+    def test_previous_208_tests_cannot_pass_idempotency_storage(self):
+        report = copy.deepcopy(self.report); report['checks']['unit']['cases'] = 208
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'): self.verify(report)
+
+    def test_idempotency_storage_names_cannot_be_replaced_by_high_count(self):
+        doc = ET.Element('testsuite', tests='12', failures='0', errors='0', skipped='0')
+        for i in range(12): ET.SubElement(doc, 'testcase', name='unrelated_' + str(i))
+        with self.assertRaisesRegex(RuntimeError, 'IDEMPOTENCY_STORAGE_CASES_MISSING'):
+            gate.validate_unit_suite(doc, 'IdempotencyStorageTest')
+
+    def test_idempotency_storage_receipt_requires_all_names(self):
+        report = copy.deepcopy(self.report); report['checks']['unit']['idempotencyStorageRegressions'].pop()
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'IDEMPOTENCY_STORAGE_RECEIPT_MISSING'): self.verify(report)
+
+    def test_missing_storage_acceptance_rejected(self):
+        report = copy.deepcopy(self.report); report['checks'].pop('storage')
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'): self.verify(report)
+
+    def test_storage_count_cannot_replace_required_case_names(self):
+        report = copy.deepcopy(self.report); report['checks']['storage']['requiredCases'].pop()
+        report['checks']['storage']['cases'] = 999
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'STORAGE_CASE_RECEIPT_MISSING'): self.verify(report)
+
+    def test_storage_receipt_rejects_other_runtime_or_source(self):
+        original = copy.deepcopy(self.storage); original['identity'] = {'head': 'old'}
+        (self.root / 'logs' / ('delivery-' + self.run) / 'w04-storage-results.json').write_text(json.dumps(original))
+        with self.assertRaisesRegex(RuntimeError, 'STORAGE_RECEIPT_IDENTITY_MISMATCH'): self.verify(self.report)
+
+
+
+    def test_delivery_without_resource_protection_cannot_pass(self):
+        report = copy.deepcopy(self.report); report['checks'].pop('resource')
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_CHECK_MISSING'): self.verify(report)
+
+    def test_resource_count_cannot_replace_required_paths(self):
+        report = copy.deepcopy(self.report); report['checks']['resource']['requiredCases'].pop()
+        report['checks']['resource']['cases'] = 999
+        self.matching_remote(report)
+        with self.assertRaisesRegex(RuntimeError, 'RESOURCE_CASE_RECEIPT_MISSING'): self.verify(report)
+
+    def test_prebuild_resource_probe_is_not_current_delivery_acceptance(self):
+        report = copy.deepcopy(self.resource); report['prebuild'] = True
+        (self.root / 'logs' / ('delivery-' + self.run) / 'resource-verification-results.json').write_text(json.dumps(report))
+        with self.assertRaisesRegex(RuntimeError, 'RESOURCE_NOT_PASSED'): self.verify(self.report)
 
 
 if __name__ == '__main__':
